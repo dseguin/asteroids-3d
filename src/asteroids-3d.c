@@ -303,7 +303,8 @@ void draw_model(const A3DModel model);
 int main(void)
 {
     /*vars*/
-    bool          loop_exit      = false;
+    bool          loop_exit      = false,
+                  skip_dt        = false;
     char          win_title[256] = {'\0'};
     float         aspect_ratio   = 1.f,
                   fov            = 70.f,
@@ -343,7 +344,7 @@ int main(void)
     A3DCamera     camera = {
                     NULL, false, false, false, false,
                     false, false, false, false, false,
-                    1.f, 0.006f, 10.f, 0.01f, 1.f};
+                    1.f, 0.005f, 7.f, 0.008f, 1.f};
     A3DModel      m_player,
                   m_projectile,
                   m_asteroid,
@@ -506,7 +507,19 @@ int main(void)
                 if(frametime > 250) frametime = 250;
             }
             /*min(frametime, target_time)*/
-            if(frametime > target_time) mintime = target_time;
+            if(frametime > target_time)
+            {
+                mintime = target_time;
+                skip_dt = true;
+            }
+            else if(skip_dt)
+            {
+                skip_dt = false;
+                if(frametime > target_time*0.2f)
+                    mintime = frametime;
+                else
+                    mintime = target_time;
+            }
             else mintime = frametime;
         } while(frametime < 0.0001f);
         /*get time modifier*/
@@ -973,9 +986,9 @@ void move_camera(A3DCamera *cam, float dt)
     /*increment velocity*/
     if((*cam).forward ^ (*cam).backward) /*along z axis*/
     {
-        s1 = m[2]  * (*cam).velmod * dt*dt;
-        s2 = m[6]  * (*cam).velmod * dt*dt;
-        s3 = m[10] * (*cam).velmod * dt*dt;
+        s1 = m[2]  * (*cam).velmod * dt;
+        s2 = m[6]  * (*cam).velmod * dt;
+        s3 = m[10] * (*cam).velmod * dt;
         if((*cam).forward) /*forward*/
         {
             cam->player->vel.x += s1;
@@ -991,9 +1004,9 @@ void move_camera(A3DCamera *cam, float dt)
     }
     if((*cam).left ^ (*cam).right) /*along x axis*/
     {
-        s1 = m[0] * (*cam).velmod * dt*dt;
-        s2 = m[4] * (*cam).velmod * dt*dt;
-        s3 = m[8] * (*cam).velmod * dt*dt;
+        s1 = m[0] * (*cam).velmod * dt;
+        s2 = m[4] * (*cam).velmod * dt;
+        s3 = m[8] * (*cam).velmod * dt;
         if((*cam).left) /*left*/
         {
             cam->player->vel.x += s1;
@@ -1009,9 +1022,9 @@ void move_camera(A3DCamera *cam, float dt)
     }
     if((*cam).up ^ (*cam).down) /*along y axis*/
     {
-        s1 = m[1] * (*cam).velmod * dt*dt;
-        s2 = m[5] * (*cam).velmod * dt*dt;
-        s3 = m[9] * (*cam).velmod * dt*dt;
+        s1 = m[1] * (*cam).velmod * dt;
+        s2 = m[5] * (*cam).velmod * dt;
+        s3 = m[9] * (*cam).velmod * dt;
         if((*cam).up) /*up*/
         {
             cam->player->vel.x -= s1;
