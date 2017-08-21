@@ -55,7 +55,7 @@
 #define false          '\x00'
 
 const float radmod = M_PI/180.f;
-const float target_frametime = 50.f/3.f;
+const float target_time = 50.f/3.f;
 
 /*1-byte boolean*/
 typedef unsigned char bool;
@@ -181,9 +181,9 @@ void get_shot_vel(A3DActor *obj);
  * Uses rotate_static_actor() and translate_static_actor()
  * to generate a 4x4 transform matrix, then calls glMultMatrix().
  **/
-void transform_static_actor(A3DActor *obj);
-void rotate_static_actor(A3DActor *obj, float *m);
-void translate_static_actor(A3DActor *obj, float *m);
+void transform_static_actor(A3DActor *obj, float dt);
+void rotate_static_actor(A3DActor *obj, float *m, float dt);
+void translate_static_actor(A3DActor *obj, float *m, float dt);
 
 /*** Move camera ***
  *
@@ -204,7 +204,7 @@ void translate_static_actor(A3DActor *obj, float *m);
  * and update translation component of the current matrix,
  * then call glMultMatrix().
  **/
-void move_camera(A3DCamera *cam);
+void move_camera(A3DCamera *cam, float dt);
 
 /*** Get inverse sqrt ***
  *
@@ -301,15 +301,19 @@ int main(void)
                   right_clip     = 0.f,
                   near_clip      = 1.f,
                   far_clip       = 800.f,
-                  shot_speed     = 3.f;
+                  shot_speed     = 5.f,
+                  frametime      = -1.f,
+                  mintime        = 0.f,
+                  timemod        = 1.f;
     float         tmp_diffuse_color[] = {0.f, 0.8f, 0.f, 1.f};
     int           i,j,k,
                   width_real,
                   height_real;
-    unsigned      loop_count       = 0,
-                  shot_loop_count  = 0,
+    unsigned      shot_loop_count  = 0,
                   spawn_loop_count = 0,
                   title_loop_count = 0,
+                  currtime         = 0,
+                  prevtime         = 0,
                   score            = 0,
                   topscore         = 0;
     SDL_Event     ev_main;
@@ -326,7 +330,7 @@ int main(void)
     A3DCamera     camera = {
                     NULL, false, false, false, false,
                     false, false, false, false, false,
-                    1.f, 0.005f, 7.f, 0.005f, 1.f};
+                    1.f, 0.006f, 10.f, 0.01f, 1.f};
     A3DModel      m_player,
                   m_projectile,
                   m_asteroid,
@@ -398,7 +402,7 @@ int main(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
                         SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     win_main = SDL_CreateWindow("Asteroids 3D", SDL_WINDOWPOS_UNDEFINED,
-            SDL_WINDOWPOS_UNDEFINED, 800, 600, SDL_WINDOW_OPENGL);
+            SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_OPENGL);
     if(!win_main)
     {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
@@ -453,6 +457,8 @@ int main(void)
     glFogf(GL_FOG_START, 500.f);
     glFogf(GL_FOG_END, 800.f);
 
+    prevtime = SDL_GetTicks();
+
     /*spawn initial asteroids*/
     srand((unsigned)time(NULL));
     for(i = 0; i < INIT_ASTEROIDS; i++)
@@ -478,6 +484,22 @@ int main(void)
     /*main loop*/
     while(!loop_exit)
     {
+        do {
+            /*get previous frame time*/
+            currtime = SDL_GetTicks();
+            if(frametime < 0.0001f)
+            {
+                frametime = (float)(currtime - prevtime);
+                if(frametime > 250) frametime = 250;
+            }
+            /*min(frametime, target_time)*/
+            if(frametime > target_time) mintime = target_time;
+            else mintime = frametime;
+        } while(frametime < 0.0001f);
+        /*get time modifier*/
+        timemod = mintime/target_time;
+        prevtime = currtime;
+
         /*events*/
         while(SDL_PollEvent(&ev_main))
         {
@@ -525,10 +547,10 @@ int main(void)
             }
             else if(ev_main.type == SDL_MOUSEMOTION)
             {
-                a_player.euler_rot.yaw   = -camera.rotmod *
-                                            camera.sens * ev_main.motion.xrel;
-                a_player.euler_rot.pitch = -camera.rotmod *
-                                            camera.sens * ev_main.motion.yrel;
+                a_player.euler_rot.yaw   = -camera.rotmod * camera.sens *
+                                           ev_main.motion.xrel * timemod;
+                a_player.euler_rot.pitch = -camera.rotmod * camera.sens *
+                                           ev_main.motion.yrel * timemod;
             }
             else if(ev_main.type == SDL_MOUSEBUTTONDOWN)
             {
@@ -550,15 +572,15 @@ int main(void)
 
         /*update state*/
         if(camera.ccw)
-           a_player.euler_rot.roll =  camera.rollmod * camera.rotmod;
+           a_player.euler_rot.roll =  camera.rollmod * camera.rotmod * timemod;
         if(camera.cw)
-           a_player.euler_rot.roll = -camera.rollmod * camera.rotmod;
+           a_player.euler_rot.roll = -camera.rollmod * camera.rotmod * timemod;
         if(camera.shoot)
         {
             /*when button is pressed, or after 16 frames*/
-            if(!shot_loop_count || loop_count - shot_loop_count > 16)
+            if(!shot_loop_count || currtime - shot_loop_count > 250)
             {
-                shot_loop_count = loop_count;
+                shot_loop_count = currtime;
                 /*find free projectile object*/
                 for(i = 0; i < MAX_SHOTS; i++)
                 {
@@ -656,9 +678,9 @@ int main(void)
             }
         }
         /*spawn new asteroid*/
-        if(loop_count - spawn_loop_count > 1800)
+        if(currtime - spawn_loop_count > 30000)
         {
-            spawn_loop_count = loop_count;
+            spawn_loop_count = currtime;
             for(i = 0; i < MAX_ASTEROIDS; i++)
             {
                 if(a_aster[i].is_spawned)
@@ -700,7 +722,7 @@ int main(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
         draw_model(m_player);
         /*camera*/
-        move_camera(&camera);
+        move_camera(&camera, timemod);
         /*** begin scene ***/
         /*bounding box*/
         glPushMatrix();
@@ -733,7 +755,7 @@ int main(void)
                 tmp_diffuse_color[1] = 1.f;
                 tmp_diffuse_color[2] = 1.f;
                 glMaterialfv(GL_FRONT, GL_EMISSION, tmp_diffuse_color);
-                transform_static_actor(&(a_shot[i]));
+                transform_static_actor(&(a_shot[i]), timemod);
                 draw_model(m_projectile);
                 glPopAttrib();
             glPopMatrix();
@@ -763,21 +785,21 @@ int main(void)
             }
             glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
             glPushMatrix();
-                transform_static_actor(&(a_aster[i]));
+                transform_static_actor(&(a_aster[i]), timemod);
                 glScalef(a_aster[i].mass, a_aster[i].mass, a_aster[i].mass);
                 draw_model(m_asteroid);
             glPopMatrix();
         }
         /*** end scene ***/
         SDL_GL_SwapWindow(win_main);
-        loop_count++;
+        frametime -= mintime;
         /*update window title*/
-        if(loop_count - title_loop_count > 32)
+        if(currtime - title_loop_count > 1000)
         {
             float relvel = 16.f/(inv_sqrt_dwh(a_player.vel.x*a_player.vel.x +
                                               a_player.vel.y*a_player.vel.y +
                                               a_player.vel.z*a_player.vel.z));
-            title_loop_count = loop_count;
+            title_loop_count = currtime;
             sprintf(win_title,
      "Asteroids 3D - SCORE: %u - TOPSCORE: %u --- Relative velocity: %.2f m/s",
                     score, topscore, relvel);
@@ -804,7 +826,7 @@ void get_shot_vel(A3DActor *obj)
     obj->vel.z = obj->vel.z * (1.f - 2.f*(*x)*(*x) - 2.f*(*y)*(*y));
 }
 
-void rotate_static_actor(A3DActor *obj, float *m)
+void rotate_static_actor(A3DActor *obj, float *m, float dt)
 {
     float tmp, x2, y2, z2, w2,
           s1, s2, s3, c1, c2, c3;
@@ -814,12 +836,12 @@ void rotate_static_actor(A3DActor *obj, float *m)
           *w = &(obj->quat_orientation.w);
 
     /*euler -> quat*/
-    s1 = sin(obj->euler_rot.yaw   * 0.5f);
-    s2 = sin(obj->euler_rot.roll  * 0.5f);
-    s3 = sin(obj->euler_rot.pitch * 0.5f);
-    c1 = cos(obj->euler_rot.yaw   * 0.5f);
-    c2 = cos(obj->euler_rot.roll  * 0.5f);
-    c3 = cos(obj->euler_rot.pitch * 0.5f);
+    s1 = sin(obj->euler_rot.yaw   * 0.5f * dt);
+    s2 = sin(obj->euler_rot.roll  * 0.5f * dt);
+    s3 = sin(obj->euler_rot.pitch * 0.5f * dt);
+    c1 = cos(obj->euler_rot.yaw   * 0.5f * dt);
+    c2 = cos(obj->euler_rot.roll  * 0.5f * dt);
+    c3 = cos(obj->euler_rot.pitch * 0.5f * dt);
     w2 = c1*c2*c3 - s1*s2*s3;
     x2 = s1*s2*c3 + c1*c2*s3;
     y2 = s1*c2*c3 + c1*s2*s3;
@@ -882,16 +904,16 @@ void rotate_static_actor(A3DActor *obj, float *m)
     m[11] = 0.f;
 }
 
-void translate_static_actor(A3DActor *obj, float *m)
+void translate_static_actor(A3DActor *obj, float *m, float dt)
 {
     float *x = &(obj->pos.x),
           *y = &(obj->pos.y),
           *z = &(obj->pos.z);
 
     /*move along vel vector*/
-    *x += obj->vel.x;
-    *y += obj->vel.y;
-    *z += obj->vel.z;
+    *x += obj->vel.x * dt;
+    *y += obj->vel.y * dt;
+    *z += obj->vel.z * dt;
     /*wrap position*/
     if(*x >  ARENA_SIZE)
        *x = -ARENA_SIZE + 0.001f;
@@ -913,15 +935,15 @@ void translate_static_actor(A3DActor *obj, float *m)
     m[15] = 1.f;
 }
 
-void transform_static_actor(A3DActor *obj)
+void transform_static_actor(A3DActor *obj, float dt)
 {
     float m[16];
-    rotate_static_actor(obj, m);
-    translate_static_actor(obj, m);
+    rotate_static_actor(obj, m, dt);
+    translate_static_actor(obj, m, dt);
     glMultMatrixf(m);
 }
 
-void move_camera(A3DCamera *cam)
+void move_camera(A3DCamera *cam, float dt)
 {
     float s1, s2, s3, m[16];
     float *x = &(cam->player->pos.x),
@@ -929,7 +951,7 @@ void move_camera(A3DCamera *cam)
           *z = &(cam->player->pos.z);
 
     /*update rotation*/
-    rotate_static_actor(cam->player, m);
+    rotate_static_actor(cam->player, m, 1.f);
     /*stop applying rotation*/
     cam->player->euler_rot.yaw   = 0.f;
     cam->player->euler_rot.roll  = 0.f;
@@ -938,9 +960,9 @@ void move_camera(A3DCamera *cam)
     /*increment velocity*/
     if((*cam).forward ^ (*cam).backward) /*along z axis*/
     {
-        s1 = m[2] * (*cam).velmod;
-        s2 = m[6] * (*cam).velmod;
-        s3 = m[10] * (*cam).velmod;
+        s1 = m[2]  * (*cam).velmod * dt*dt;
+        s2 = m[6]  * (*cam).velmod * dt*dt;
+        s3 = m[10] * (*cam).velmod * dt*dt;
         if((*cam).forward) /*forward*/
         {
             cam->player->vel.x += s1;
@@ -956,9 +978,9 @@ void move_camera(A3DCamera *cam)
     }
     if((*cam).left ^ (*cam).right) /*along x axis*/
     {
-        s1 = m[0] * (*cam).velmod;
-        s2 = m[4] * (*cam).velmod;
-        s3 = m[8] * (*cam).velmod;
+        s1 = m[0] * (*cam).velmod * dt;
+        s2 = m[4] * (*cam).velmod * dt;
+        s3 = m[8] * (*cam).velmod * dt;
         if((*cam).left) /*left*/
         {
             cam->player->vel.x += s1;
@@ -974,9 +996,9 @@ void move_camera(A3DCamera *cam)
     }
     if((*cam).up ^ (*cam).down) /*along y axis*/
     {
-        s1 = m[1] * (*cam).velmod;
-        s2 = m[5] * (*cam).velmod;
-        s3 = m[9] * (*cam).velmod;
+        s1 = m[1] * (*cam).velmod * dt;
+        s2 = m[5] * (*cam).velmod * dt;
+        s3 = m[9] * (*cam).velmod * dt;
         if((*cam).up) /*up*/
         {
             cam->player->vel.x -= s1;
@@ -990,9 +1012,9 @@ void move_camera(A3DCamera *cam)
             cam->player->vel.z += s3;
         }
     }
-    *x += cam->player->vel.x;
-    *y += cam->player->vel.y;
-    *z += cam->player->vel.z;
+    *x += cam->player->vel.x * dt;
+    *y += cam->player->vel.y * dt;
+    *z += cam->player->vel.z * dt;
     /*wrap position*/
     if(*x >  ARENA_SIZE)
        *x = -ARENA_SIZE + 0.001f;
