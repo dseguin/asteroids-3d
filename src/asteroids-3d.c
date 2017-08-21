@@ -177,12 +177,18 @@ void get_shot_vel(A3DActor *obj);
  * Apply transformations to an object in constant motion.
  *
  *     obj - static actor object.
+ *     dt  - frame time modifier.
  *
  * Uses rotate_static_actor() and translate_static_actor()
  * to generate a 4x4 transform matrix, then calls glMultMatrix().
+ * To keep the transform increments consistent whether VSync is
+ * enabled or disabled, a frame time modifier is needed. The 'dt'
+ * modifier should be
+ *
+ *   min(previous frametime, target frametime)/(target frametime)
  **/
 void transform_static_actor(A3DActor *obj, float dt);
-void rotate_static_actor(A3DActor *obj, float *m, float dt);
+void rotate_static_actor   (A3DActor *obj, float *m, float dt);
 void translate_static_actor(A3DActor *obj, float *m, float dt);
 
 /*** Move camera ***
@@ -190,6 +196,7 @@ void translate_static_actor(A3DActor *obj, float *m, float dt);
  * Rotates and translates camera.
  *
  *     cam - player camera object.
+ *     dt  - frame time modifier.
  *
  * This replaces the glRotatef() and glTranslatef() calls
  * in the drawing section. move_camera() takes care of calling
@@ -203,6 +210,11 @@ void translate_static_actor(A3DActor *obj, float *m, float dt);
  * pressed, calculate the new velocity vectors from the matrix
  * and update translation component of the current matrix,
  * then call glMultMatrix().
+ * To keep the transform increments consistent whether VSync is
+ * enabled or disabled, a frame time modifier is needed. The 'dt'
+ * modifier should be
+ *
+ *   min(previous frametime, target frametime)/(target frametime)
  **/
 void move_camera(A3DCamera *cam, float dt);
 
@@ -314,6 +326,7 @@ int main(void)
                   title_loop_count = 0,
                   currtime         = 0,
                   prevtime         = 0,
+                  difftime         = 0,
                   score            = 0,
                   topscore         = 0;
     SDL_Event     ev_main;
@@ -402,7 +415,7 @@ int main(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
                         SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     win_main = SDL_CreateWindow("Asteroids 3D", SDL_WINDOWPOS_UNDEFINED,
-            SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_OPENGL);
+            SDL_WINDOWPOS_UNDEFINED, 800, 600, SDL_WINDOW_OPENGL);
     if(!win_main)
     {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
@@ -498,6 +511,7 @@ int main(void)
         } while(frametime < 0.0001f);
         /*get time modifier*/
         timemod = mintime/target_time;
+        difftime = currtime - prevtime;
         prevtime = currtime;
 
         /*events*/
@@ -800,9 +814,8 @@ int main(void)
                                               a_player.vel.y*a_player.vel.y +
                                               a_player.vel.z*a_player.vel.z));
             title_loop_count = currtime;
-            sprintf(win_title,
-     "Asteroids 3D - SCORE: %u - TOPSCORE: %u --- Relative velocity: %.2f m/s",
-                    score, topscore, relvel);
+            sprintf(win_title, "Asteroids 3D - SCORE: %u - TOPSCORE: %u --- Relative velocity: %.2f m/s --- ms/f: %u",
+                    score, topscore, relvel, difftime);
             SDL_SetWindowTitle(win_main, win_title);
         }
     }
@@ -978,9 +991,9 @@ void move_camera(A3DCamera *cam, float dt)
     }
     if((*cam).left ^ (*cam).right) /*along x axis*/
     {
-        s1 = m[0] * (*cam).velmod * dt;
-        s2 = m[4] * (*cam).velmod * dt;
-        s3 = m[8] * (*cam).velmod * dt;
+        s1 = m[0] * (*cam).velmod * dt*dt;
+        s2 = m[4] * (*cam).velmod * dt*dt;
+        s3 = m[8] * (*cam).velmod * dt*dt;
         if((*cam).left) /*left*/
         {
             cam->player->vel.x += s1;
@@ -996,9 +1009,9 @@ void move_camera(A3DCamera *cam, float dt)
     }
     if((*cam).up ^ (*cam).down) /*along y axis*/
     {
-        s1 = m[1] * (*cam).velmod * dt;
-        s2 = m[5] * (*cam).velmod * dt;
-        s3 = m[9] * (*cam).velmod * dt;
+        s1 = m[1] * (*cam).velmod * dt*dt;
+        s2 = m[5] * (*cam).velmod * dt*dt;
+        s3 = m[9] * (*cam).velmod * dt*dt;
         if((*cam).up) /*up*/
         {
             cam->player->vel.x -= s1;
