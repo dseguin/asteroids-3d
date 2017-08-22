@@ -157,7 +157,22 @@ typedef struct A3DCamera {
     float     rollmod;
     float     velmod;
     float     sens; /*sensitivity*/
+    float     pos_offset[3];
 } A3DCamera;
+
+/*** Reset game objects ***
+ *
+ * Resets the player and asteroids.
+ *
+ *     player - player actor object.
+ *     aster  - array of asteroid actors.
+ *
+ * After the player dies and the blast effect is done
+ * growing, the positions, orientations, rotations, and
+ * velocities of the game actors are reset to their
+ * initial values.
+ **/
+void reset_game(A3DActor *player, A3DActor *aster);
 
 /*** Get projectile velocity ***
  *
@@ -317,7 +332,8 @@ int main(void)
                   shot_speed     = 5.f,
                   frametime      = -1.f,
                   mintime        = 0.f,
-                  timemod        = 1.f;
+                  timemod        = 1.f,
+                  blastmod       = 32.f;
     float         tmp_diffuse_color[] = {0.f, 0.8f, 0.f, 1.f};
     int           i,j,k,
                   width_real,
@@ -339,12 +355,19 @@ int main(void)
                     {0.f,0.f,0.f},
                     {0.f,0.f,0.f,1.f},
                     {0.f,0.f,0.f}};
+    A3DActor      a_blast = {
+                    false, 1.f,
+                    {0.f,0.f,0.f},
+                    {0.f,0.f,0.f},
+                    {0.f,0.f,0.f,1.f},
+                    {0.f,0.f,0.f}};
     A3DActor     *a_shot;
     A3DActor     *a_aster;
     A3DCamera     camera = {
                     NULL, false, false, false, false,
                     false, false, false, false, false,
-                    1.f, 0.005f, 7.f, 0.008f, 1.f};
+                    1.f, 0.005f, 7.f, 0.008f, 1.f,
+                    {0.f, -2.f, -5.f}};
     A3DModel      m_player,
                   m_projectile,
                   m_asteroid,
@@ -516,9 +539,8 @@ int main(void)
             {
                 skip_dt = false;
                 if(frametime > target_time*0.2f)
-                    mintime = frametime;
-                else
-                    mintime = target_time;
+                     mintime = frametime;
+                else mintime = target_time;
             }
             else mintime = frametime;
         } while(frametime < 0.0001f);
@@ -602,7 +624,7 @@ int main(void)
            a_player.euler_rot.roll =  camera.rollmod * camera.rotmod * timemod;
         if(camera.cw)
            a_player.euler_rot.roll = -camera.rollmod * camera.rotmod * timemod;
-        if(camera.shoot)
+        if(camera.shoot && a_player.is_spawned)
         {
             /*when button is pressed, or after 16 frames*/
             if(!shot_loop_count || currtime - shot_loop_count > 250)
@@ -643,12 +665,30 @@ int main(void)
         /*check asteroids*/
         for(i = 0; i < MAX_ASTEROIDS; i++)
         {
-            if(!a_aster[i].is_spawned)
+            float dx, dy, dz;
+            if(!a_aster[i].is_spawned || !a_player.is_spawned)
                 continue;
+            /*player collision*/
+            dx = a_aster[i].pos.x + a_player.pos.x;
+            dy = a_aster[i].pos.y + a_player.pos.y;
+            dz = a_aster[i].pos.z + a_player.pos.z;
+            /*check collision*/
+            if(inv_sqrt_dwh(dx*dx + dy*dy + dz*dz) > 0.8f/(a_aster[i].mass))
+            {
+                a_player.is_spawned     = false;
+                blastmod                = 20.f;
+                a_blast.is_spawned      = true;
+                a_blast.mass            = 0.001f;
+                a_blast.pos.x           = -a_player.pos.x;
+                a_blast.pos.y           = -a_player.pos.y;
+                a_blast.pos.z           = -a_player.pos.z;
+                a_blast.euler_rot.yaw   = ((rand()%400) - 200) * 0.0001f;
+                a_blast.euler_rot.pitch = ((rand()%400) - 200) * 0.0001f;
+                a_blast.euler_rot.roll  = ((rand()%400) - 200) * 0.0001f;
+            }
             /*projectile collision*/
             for(j = 0; j < MAX_SHOTS; j++)
             {
-                float dx, dy, dz;
                 if(!a_shot[j].is_spawned)
                     continue;
                 /*get distance between shot and asteroid*/
@@ -729,6 +769,27 @@ int main(void)
                 break;
             }
         }
+        /*grow blast effect*/
+        if(!a_player.is_spawned && a_blast.is_spawned)
+        {
+            if(a_blast.mass < 2.5f)
+            {
+                a_blast.mass += timemod/blastmod;
+                camera.fovmod += 0.3f*timemod/blastmod;
+                camera.pos_offset[2] -= timemod/blastmod;
+                blastmod += 0.5f*timemod;
+            }
+            else /*reset game*/
+            {
+                a_blast.is_spawned = false;
+                camera.fovmod = 1.f;
+                camera.pos_offset[2] = -5.f;
+                /*reset score*/
+                if(score > topscore) topscore = score;
+                score = 0;
+                reset_game(&a_player, a_aster);
+            }
+        }
 
         /*** drawing ***/
         glViewport(0, 0, width_real, height_real);
@@ -742,14 +803,33 @@ int main(void)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         /*player model*/
-        glTranslatef(0.f, -2.f, -5.f);
+        glTranslatef(camera.pos_offset[0], camera.pos_offset[1], camera.pos_offset[2]);
         tmp_diffuse_color[0] = 1.f;
         tmp_diffuse_color[1] = 1.f;
         tmp_diffuse_color[2] = 1.f;
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
-        draw_model(m_player);
-        /*camera*/
+        if(a_player.is_spawned)
+            draw_model(m_player);
         move_camera(&camera, timemod);
+        /*blast*/
+        if(!a_player.is_spawned)
+        {
+            glPushMatrix();
+                glPushAttrib(GL_LIGHTING_BIT);
+                tmp_diffuse_color[0] = 1.f;
+                tmp_diffuse_color[1] = 1.f;
+                tmp_diffuse_color[2] = 0.f;
+                glMaterialfv(GL_FRONT, GL_SPECULAR, tmp_diffuse_color);
+                tmp_diffuse_color[0] = 0.8f;
+                tmp_diffuse_color[1] = 0.4f;
+                tmp_diffuse_color[2] = 0.2f;
+                glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, tmp_diffuse_color);
+                transform_static_actor(&a_blast, timemod);
+                glScalef(a_blast.mass, a_blast.mass, a_blast.mass);
+                draw_model(m_blast);
+                glPopAttrib();
+            glPopMatrix();
+        }
         /*** begin scene ***/
         /*bounding box*/
         glPushMatrix();
@@ -838,6 +918,48 @@ int main(void)
     SDL_DestroyWindow(win_main);
     SDL_Quit();
     return 0;
+}
+
+void reset_game(A3DActor *player, A3DActor *aster)
+{
+    int i;
+    /*reset player*/
+    player->is_spawned         = true;
+    player->pos.x              = 0.f;
+    player->pos.y              = 0.f;
+    player->pos.z              = 0.f;
+    player->vel.x              = 0.f;
+    player->vel.y              = 0.f;
+    player->vel.z              = 0.f;
+    player->quat_orientation.x = 0.f;
+    player->quat_orientation.y = 0.f;
+    player->quat_orientation.z = 0.f;
+    player->quat_orientation.w = 1.f;
+    player->euler_rot.yaw      = 0.f;
+    player->euler_rot.pitch    = 0.f;
+    player->euler_rot.roll     = 0.f;
+    /*reset asteroids*/
+    for(i = 0; i < MAX_ASTEROIDS; i++)
+    {
+        aster[i].is_spawned      = false;
+        if(i >= INIT_ASTEROIDS) continue;
+        aster[i].is_spawned      = true;
+        if(rand() & 0x01)      /*50%*/
+            aster[i].mass        = ASTER_MED;
+        else if(rand() & 0x01) /*25%*/
+            aster[i].mass        = ASTER_LARGE;
+        else                   /*25%*/
+            aster[i].mass        = ASTER_SMALL;
+        aster[i].pos.x           = (float)((rand()%500) - 250);
+        aster[i].pos.y           = (float)((rand()%500) - 250);
+        aster[i].pos.z           = ARENA_SIZE;
+        aster[i].vel.x           = ((rand()%200) - 100) * 0.005f;
+        aster[i].vel.y           = ((rand()%200) - 100) * 0.005f;
+        aster[i].vel.z           = ((rand()%200) - 100) * 0.005f;
+        aster[i].euler_rot.yaw   = ((rand()%400) - 200) * 0.0001f;
+        aster[i].euler_rot.pitch = ((rand()%400) - 200) * 0.0001f;
+        aster[i].euler_rot.roll  = ((rand()%400) - 200) * 0.0001f;
+    }
 }
 
 void get_shot_vel(A3DActor *obj)
@@ -983,77 +1105,80 @@ void move_camera(A3DCamera *cam, float dt)
     cam->player->euler_rot.roll  = 0.f;
     cam->player->euler_rot.pitch = 0.f;
 
-    /*increment velocity*/
-    if((*cam).forward ^ (*cam).backward) /*along z axis*/
+    if(cam->player->is_spawned)
     {
-        s1 = m[2]  * (*cam).velmod * dt;
-        s2 = m[6]  * (*cam).velmod * dt;
-        s3 = m[10] * (*cam).velmod * dt;
-        if((*cam).forward) /*forward*/
+        /*increment velocity*/
+        if((*cam).forward ^ (*cam).backward) /*along z axis*/
         {
-            cam->player->vel.x += s1;
-            cam->player->vel.y += s2;
-            cam->player->vel.z += s3;
+            s1 = m[2]  * (*cam).velmod * dt;
+            s2 = m[6]  * (*cam).velmod * dt;
+            s3 = m[10] * (*cam).velmod * dt;
+            if((*cam).forward) /*forward*/
+            {
+                cam->player->vel.x += s1;
+                cam->player->vel.y += s2;
+                cam->player->vel.z += s3;
+            }
+            else               /*backward*/
+            {
+                cam->player->vel.x -= s1;
+                cam->player->vel.y -= s2;
+                cam->player->vel.z -= s3;
+            }
         }
-        else               /*backward*/
+        if((*cam).left ^ (*cam).right) /*along x axis*/
         {
-            cam->player->vel.x -= s1;
-            cam->player->vel.y -= s2;
-            cam->player->vel.z -= s3;
+            s1 = m[0] * (*cam).velmod * dt;
+            s2 = m[4] * (*cam).velmod * dt;
+            s3 = m[8] * (*cam).velmod * dt;
+            if((*cam).left) /*left*/
+            {
+                cam->player->vel.x += s1;
+                cam->player->vel.y += s2;
+                cam->player->vel.z += s3;
+            }
+            else            /*right*/
+            {
+                cam->player->vel.x -= s1;
+                cam->player->vel.y -= s2;
+                cam->player->vel.z -= s3;
+            }
         }
+        if((*cam).up ^ (*cam).down) /*along y axis*/
+        {
+            s1 = m[1] * (*cam).velmod * dt;
+            s2 = m[5] * (*cam).velmod * dt;
+            s3 = m[9] * (*cam).velmod * dt;
+            if((*cam).up) /*up*/
+            {
+                cam->player->vel.x -= s1;
+                cam->player->vel.y -= s2;
+                cam->player->vel.z -= s3;
+            }
+            else          /*down*/
+            {
+                cam->player->vel.x += s1;
+                cam->player->vel.y += s2;
+                cam->player->vel.z += s3;
+            }
+        }
+        *x += cam->player->vel.x * dt;
+        *y += cam->player->vel.y * dt;
+        *z += cam->player->vel.z * dt;
+        /*wrap position*/
+        if(*x >  ARENA_SIZE)
+           *x = -ARENA_SIZE + 0.001f;
+        if(*x < -ARENA_SIZE)
+           *x =  ARENA_SIZE - 0.001f;
+        if(*y >  ARENA_SIZE)
+           *y = -ARENA_SIZE + 0.001f;
+        if(*y < -ARENA_SIZE)
+           *y =  ARENA_SIZE - 0.001f;
+        if(*z >  ARENA_SIZE)
+           *z = -ARENA_SIZE + 0.001f;
+        if(*z < -ARENA_SIZE)
+           *z =  ARENA_SIZE - 0.001f;
     }
-    if((*cam).left ^ (*cam).right) /*along x axis*/
-    {
-        s1 = m[0] * (*cam).velmod * dt;
-        s2 = m[4] * (*cam).velmod * dt;
-        s3 = m[8] * (*cam).velmod * dt;
-        if((*cam).left) /*left*/
-        {
-            cam->player->vel.x += s1;
-            cam->player->vel.y += s2;
-            cam->player->vel.z += s3;
-        }
-        else            /*right*/
-        {
-            cam->player->vel.x -= s1;
-            cam->player->vel.y -= s2;
-            cam->player->vel.z -= s3;
-        }
-    }
-    if((*cam).up ^ (*cam).down) /*along y axis*/
-    {
-        s1 = m[1] * (*cam).velmod * dt;
-        s2 = m[5] * (*cam).velmod * dt;
-        s3 = m[9] * (*cam).velmod * dt;
-        if((*cam).up) /*up*/
-        {
-            cam->player->vel.x -= s1;
-            cam->player->vel.y -= s2;
-            cam->player->vel.z -= s3;
-        }
-        else          /*down*/
-        {
-            cam->player->vel.x += s1;
-            cam->player->vel.y += s2;
-            cam->player->vel.z += s3;
-        }
-    }
-    *x += cam->player->vel.x * dt;
-    *y += cam->player->vel.y * dt;
-    *z += cam->player->vel.z * dt;
-    /*wrap position*/
-    if(*x >  ARENA_SIZE)
-       *x = -ARENA_SIZE + 0.001f;
-    if(*x < -ARENA_SIZE)
-       *x =  ARENA_SIZE - 0.001f;
-    if(*y >  ARENA_SIZE)
-       *y = -ARENA_SIZE + 0.001f;
-    if(*y < -ARENA_SIZE)
-       *y =  ARENA_SIZE - 0.001f;
-    if(*z >  ARENA_SIZE)
-       *z = -ARENA_SIZE + 0.001f;
-    if(*z < -ARENA_SIZE)
-       *z =  ARENA_SIZE - 0.001f;
 
     /*update translation component of matrix*/
     m[12] = m[0]*(*x) + m[4]*(*y) + m[8]*(*z);
