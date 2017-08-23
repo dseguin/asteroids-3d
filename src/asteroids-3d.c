@@ -152,12 +152,14 @@ typedef struct A3DCamera {
     bool      ccw;
     bool      cw;
     bool      shoot;
+    bool      driftcam;      /*camera drift from mouse motion*/
     float     fovmod;
     float     rotmod;
     float     rollmod;
     float     velmod;
-    float     sens; /*sensitivity*/
-    float     pos_offset[3];
+    float     sens;          /*sensitivity*/
+    float     pos_offset[3]; /*driftcam position*/
+    float     roll;          /*driftcam roll*/
 } A3DCamera;
 
 /*** Reset game objects ***
@@ -366,8 +368,8 @@ int main(void)
     A3DCamera     camera = {
                     NULL, false, false, false, false,
                     false, false, false, false, false,
-                    1.f, 0.005f, 7.f, 0.008f, 1.f,
-                    {0.f, -2.f, -5.f}};
+                    false, 1.f, 0.005f, 7.f, 0.008f,
+                    0.8f, {0.f, -2.f, -5.f}, 0.f};
     A3DModel      m_player,
                   m_projectile,
                   m_asteroid,
@@ -558,6 +560,11 @@ int main(void)
             {
                 if(ev_main.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
                     loop_exit     = true;
+                else if(ev_main.key.keysym.scancode == SDL_SCANCODE_BACKSPACE)
+                {
+                    if(camera.driftcam) camera.driftcam = false;
+                    else                camera.driftcam = true;
+                }
                 else if(ev_main.key.keysym.scancode == SDL_SCANCODE_W)
                     camera.forward  = true;
                 else if(ev_main.key.keysym.scancode == SDL_SCANCODE_S)
@@ -597,9 +604,9 @@ int main(void)
             else if(ev_main.type == SDL_MOUSEMOTION)
             {
                 a_player.euler_rot.yaw   = -camera.rotmod * camera.sens *
-                                           ev_main.motion.xrel * timemod;
+                                           (float)ev_main.motion.xrel;
                 a_player.euler_rot.pitch = -camera.rotmod * camera.sens *
-                                           ev_main.motion.yrel * timemod;
+                                           (float)ev_main.motion.yrel;
             }
             else if(ev_main.type == SDL_MOUSEBUTTONDOWN)
             {
@@ -776,7 +783,7 @@ int main(void)
             {
                 a_blast.mass += timemod/blastmod;
                 camera.fovmod += 0.3f*timemod/blastmod;
-                camera.pos_offset[2] -= timemod/blastmod;
+                camera.pos_offset[2] -= 2.f*timemod/blastmod;
                 blastmod += 0.5f*timemod;
             }
             else /*reset game*/
@@ -803,13 +810,18 @@ int main(void)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         /*player model*/
-        glTranslatef(camera.pos_offset[0], camera.pos_offset[1], camera.pos_offset[2]);
+        if(camera.driftcam)
+        {
+             glTranslatef(camera.pos_offset[0], camera.pos_offset[1],
+                          camera.pos_offset[2]);
+             glRotatef(camera.roll, 0.f, 0.f, 1.f);
+        }
+        else glTranslatef(0.f, -2.f, camera.pos_offset[2]);
         tmp_diffuse_color[0] = 1.f;
         tmp_diffuse_color[1] = 1.f;
         tmp_diffuse_color[2] = 1.f;
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
-        if(a_player.is_spawned)
-            draw_model(m_player);
+        if(a_player.is_spawned) draw_model(m_player);
         move_camera(&camera, timemod);
         /*blast*/
         if(!a_player.is_spawned)
@@ -823,7 +835,8 @@ int main(void)
                 tmp_diffuse_color[0] = 0.8f;
                 tmp_diffuse_color[1] = 0.4f;
                 tmp_diffuse_color[2] = 0.2f;
-                glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, tmp_diffuse_color);
+                glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE,
+                             tmp_diffuse_color);
                 transform_static_actor(&a_blast, timemod);
                 glScalef(a_blast.mass, a_blast.mass, a_blast.mass);
                 draw_model(m_blast);
@@ -1093,13 +1106,49 @@ void transform_static_actor(A3DActor *obj, float dt)
 
 void move_camera(A3DCamera *cam, float dt)
 {
+    static float zz = 0.02f, yacc, pacc;
     float s1, s2, s3, m[16];
     float *x = &(cam->player->pos.x),
           *y = &(cam->player->pos.y),
           *z = &(cam->player->pos.z);
 
+    /*camera movement panning/zooming*/
+    if(fabs(cam->player->euler_rot.yaw) < 0.000001f)
+    {
+        if(yacc < 1000.f) yacc += dt;
+    }
+    else yacc = 0.f;
+    if(fabs(cam->player->euler_rot.pitch) < 0.000001f)
+    {
+        if(pacc < 1000.f) pacc += dt;
+    }
+    else pacc = 0.f;
+    cam->roll += cam->player->euler_rot.yaw * 0.5f * dt/radmod;
+    cam->pos_offset[1] -= cam->player->euler_rot.pitch * 0.02f * dt/radmod;
+    if(yacc > 6.f)
+    {
+        if(cam->roll < -1.f)     cam->roll += 0.5f*dt;
+        else if(cam->roll > 1.f) cam->roll -= 0.5f*dt;
+        else                     cam->roll = 0.f;
+    }
+    if(pacc > 6.f)
+    {
+        if(cam->pos_offset[1] < -2.05f)      cam->pos_offset[1] += 0.02f*dt;
+        else if(cam->pos_offset[1] > -1.95f) cam->pos_offset[1] -= 0.02f*dt;
+        else                                 cam->pos_offset[1] = -2.f;
+    }
+    cam->pos_offset[0] = 0.1f * cam->roll;
+    if(cam->roll > 15.f)
+       cam->roll = 15.f;
+    if(cam->roll < -15.f)
+       cam->roll = -15.f;
+    if(cam->pos_offset[1] < -3.f)
+       cam->pos_offset[1] = -3.f;
+    if(cam->pos_offset[1] > -1.f)
+       cam->pos_offset[1] = -1.f;
+
     /*update rotation*/
-    rotate_static_actor(cam->player, m, 1.f);
+    rotate_static_actor(cam->player, m, dt);
     /*stop applying rotation*/
     cam->player->euler_rot.yaw   = 0.f;
     cam->player->euler_rot.roll  = 0.f;
@@ -1110,6 +1159,7 @@ void move_camera(A3DCamera *cam, float dt)
         /*increment velocity*/
         if((*cam).forward ^ (*cam).backward) /*along z axis*/
         {
+            if(zz > 0.005f) zz -= 0.001f*dt;
             s1 = m[2]  * (*cam).velmod * dt;
             s2 = m[6]  * (*cam).velmod * dt;
             s3 = m[10] * (*cam).velmod * dt;
@@ -1118,13 +1168,26 @@ void move_camera(A3DCamera *cam, float dt)
                 cam->player->vel.x += s1;
                 cam->player->vel.y += s2;
                 cam->player->vel.z += s3;
+                if(cam->fovmod < 1.2f)
+                    cam->fovmod += dt*zz;
             }
             else               /*backward*/
             {
                 cam->player->vel.x -= s1;
                 cam->player->vel.y -= s2;
                 cam->player->vel.z -= s3;
+                if(cam->fovmod > 0.8f)
+                    cam->fovmod -= dt*zz;
             }
+        }
+        else
+        {
+            zz = 0.02f;
+            if(cam->fovmod > 1.02f)
+                 cam->fovmod -= 1.5f*dt*zz;
+            else if(cam->fovmod < 0.98f)
+                 cam->fovmod += 1.5f*dt*zz;
+            else cam->fovmod = 1.f;
         }
         if((*cam).left ^ (*cam).right) /*along x axis*/
         {
