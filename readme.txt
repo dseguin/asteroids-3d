@@ -19,6 +19,7 @@ Controls:
   up       - LSHIFT
   down     - LCTRL
   shoot    - left mouse button
+  driftcam - BACKSPACE
   quit     - ESC
 
 Dependencies:

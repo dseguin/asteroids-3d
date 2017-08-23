@@ -368,7 +368,7 @@ int main(void)
     A3DCamera     camera = {
                     NULL, false, false, false, false,
                     false, false, false, false, false,
-                    false, 1.f, 0.005f, 7.f, 0.008f,
+                    true, 1.f, 0.005f, 7.f, 0.008f,
                     0.8f, {0.f, -2.f, -5.f}, 0.f};
     A3DModel      m_player,
                   m_projectile,
@@ -810,13 +810,9 @@ int main(void)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         /*player model*/
-        if(camera.driftcam)
-        {
-             glTranslatef(camera.pos_offset[0], camera.pos_offset[1],
-                          camera.pos_offset[2]);
-             glRotatef(camera.roll, 0.f, 0.f, 1.f);
-        }
-        else glTranslatef(0.f, -2.f, camera.pos_offset[2]);
+        glTranslatef(camera.pos_offset[0], camera.pos_offset[1],
+                     camera.pos_offset[2]);
+        glRotatef(camera.roll, 0.f, 0.f, 1.f);
         tmp_diffuse_color[0] = 1.f;
         tmp_diffuse_color[1] = 1.f;
         tmp_diffuse_color[2] = 1.f;
@@ -1123,15 +1119,18 @@ void move_camera(A3DCamera *cam, float dt)
         if(pacc < 1000.f) pacc += dt;
     }
     else pacc = 0.f;
-    cam->roll += cam->player->euler_rot.yaw * 0.5f * dt/radmod;
-    cam->pos_offset[1] -= cam->player->euler_rot.pitch * 0.02f * dt/radmod;
-    if(yacc > 6.f)
+    if(cam->driftcam)
+    {
+        cam->roll += cam->player->euler_rot.yaw * 0.5f * dt/radmod;
+        cam->pos_offset[1] -= cam->player->euler_rot.pitch * 0.02f * dt/radmod;
+    }
+    if(yacc > 10.f || !cam->driftcam)
     {
         if(cam->roll < -1.f)     cam->roll += 0.5f*dt;
         else if(cam->roll > 1.f) cam->roll -= 0.5f*dt;
         else                     cam->roll = 0.f;
     }
-    if(pacc > 6.f)
+    if(pacc > 10.f || !cam->driftcam)
     {
         if(cam->pos_offset[1] < -2.05f)      cam->pos_offset[1] += 0.02f*dt;
         else if(cam->pos_offset[1] > -1.95f) cam->pos_offset[1] -= 0.02f*dt;
@@ -1157,18 +1156,18 @@ void move_camera(A3DCamera *cam, float dt)
     if(cam->player->is_spawned)
     {
         /*increment velocity*/
-        if((*cam).forward ^ (*cam).backward) /*along z axis*/
+        if(cam->forward ^ cam->backward) /*along z axis*/
         {
             if(zz > 0.005f) zz -= 0.001f*dt;
-            s1 = m[2]  * (*cam).velmod * dt;
-            s2 = m[6]  * (*cam).velmod * dt;
-            s3 = m[10] * (*cam).velmod * dt;
-            if((*cam).forward) /*forward*/
+            s1 = m[2]  * cam->velmod * dt;
+            s2 = m[6]  * cam->velmod * dt;
+            s3 = m[10] * cam->velmod * dt;
+            if(cam->forward) /*forward*/
             {
                 cam->player->vel.x += s1;
                 cam->player->vel.y += s2;
                 cam->player->vel.z += s3;
-                if(cam->fovmod < 1.2f)
+                if(cam->fovmod < 1.2f && cam->driftcam)
                     cam->fovmod += dt*zz;
             }
             else               /*backward*/
@@ -1176,7 +1175,7 @@ void move_camera(A3DCamera *cam, float dt)
                 cam->player->vel.x -= s1;
                 cam->player->vel.y -= s2;
                 cam->player->vel.z -= s3;
-                if(cam->fovmod > 0.8f)
+                if(cam->fovmod > 0.8f && cam->driftcam)
                     cam->fovmod -= dt*zz;
             }
         }
@@ -1189,12 +1188,12 @@ void move_camera(A3DCamera *cam, float dt)
                  cam->fovmod += 1.5f*dt*zz;
             else cam->fovmod = 1.f;
         }
-        if((*cam).left ^ (*cam).right) /*along x axis*/
+        if(cam->left ^ cam->right) /*along x axis*/
         {
-            s1 = m[0] * (*cam).velmod * dt;
-            s2 = m[4] * (*cam).velmod * dt;
-            s3 = m[8] * (*cam).velmod * dt;
-            if((*cam).left) /*left*/
+            s1 = m[0] * cam->velmod * dt;
+            s2 = m[4] * cam->velmod * dt;
+            s3 = m[8] * cam->velmod * dt;
+            if(cam->left) /*left*/
             {
                 cam->player->vel.x += s1;
                 cam->player->vel.y += s2;
@@ -1207,12 +1206,12 @@ void move_camera(A3DCamera *cam, float dt)
                 cam->player->vel.z -= s3;
             }
         }
-        if((*cam).up ^ (*cam).down) /*along y axis*/
+        if(cam->up ^ cam->down) /*along y axis*/
         {
-            s1 = m[1] * (*cam).velmod * dt;
-            s2 = m[5] * (*cam).velmod * dt;
-            s3 = m[9] * (*cam).velmod * dt;
-            if((*cam).up) /*up*/
+            s1 = m[1] * cam->velmod * dt;
+            s2 = m[5] * cam->velmod * dt;
+            s3 = m[9] * cam->velmod * dt;
+            if(cam->up) /*up*/
             {
                 cam->player->vel.x -= s1;
                 cam->player->vel.y -= s2;
