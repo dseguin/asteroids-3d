@@ -436,6 +436,7 @@ int main(void)
                  *m_ptr_all[5];
     A3DImage      i_font;
     A3DScoreText  scoretext[3] = {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
+    A3DScoreText  reticule[3]  = {{true,  {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
 
     /*initialize projectiles*/
     a_shot = malloc(sizeof(A3DActor)*MAX_SHOTS);
@@ -481,6 +482,14 @@ int main(void)
 
     /*tie camera to player actor*/
     camera.player = &a_player;
+
+    /*setup reticule*/
+    strcpy(reticule[0].text, "\x0f");
+    strcpy(reticule[1].text, "+");
+    strcpy(reticule[2].text, "+");
+    reticule[0].offset = 100.f;
+    reticule[1].offset = 30.f;
+    reticule[2].offset = 10.f;
 
     /*set image path*/
     i_font.filename = "data/image/8x16s_bitfont.png";
@@ -790,6 +799,23 @@ int main(void)
         }
         else
             shot_loop_count = 0;
+        /*targeting reticules*/
+        for(i = 0; i < 3; i++)
+        {
+            float *x = &a_player.quat_orientation.z,
+                  *y = &a_player.quat_orientation.w,
+                  *z = &a_player.quat_orientation.x,
+                  *w = &a_player.quat_orientation.y;
+            reticule[i].pos.x = -a_player.pos.x;
+            reticule[i].pos.y = -a_player.pos.y;
+            reticule[i].pos.z = -a_player.pos.z;
+            reticule[i].pos.x += reticule[i].offset *
+                (-2.f*(*x)*(*z) - 2.f*(*y)*(*w)) - a_player.vel.x;
+            reticule[i].pos.y += reticule[i].offset *
+                (2.f*(*y)*(*z) - 2.f*(*x)*(*w)) - a_player.vel.y;
+            reticule[i].pos.z += reticule[i].offset *
+                (1.f - 2.f*(*x)*(*x) - 2.f*(*y)*(*y)) - a_player.vel.z;
+        }
         /*check asteroids*/
         for(i = 0; i < MAX_ASTEROIDS; i++)
         {
@@ -824,7 +850,7 @@ int main(void)
                 dy = a_shot[j].pos.y - a_aster[i].pos.y;
                 dz = a_shot[j].pos.z - a_aster[i].pos.z;
                 /*check hit*/
-                if(inv_sqrt_dwh(dx*dx + dy*dy + dz*dz) < 0.9f/a_aster[i].mass)
+                if(inv_sqrt_dwh(dx*dx + dy*dy + dz*dz) < 0.8f/a_aster[i].mass)
                     continue;
                 a_shot[j].is_spawned = false;
                 /*spawn scoretext object*/
@@ -1103,6 +1129,19 @@ int main(void)
             for(j = 0; j < (signed)strlen(scoretext[i].text); j++)
                 glBitmap(8, 16, 0, 0, 8, 0,
                     (void*)(intptr_t)(BITFONT_OFFSET(scoretext[i].text[j])));
+            glPopAttrib();
+        }
+        /*targeting reticules*/
+        for(i = 0; i < 3; i++)
+        {
+            glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);
+            glDisable(GL_LIGHTING);
+            glDisable(GL_DEPTH_TEST);
+            glColor3f(1.f, 1.f, 1.f);
+            glRasterPos3f(reticule[i].pos.x, reticule[i].pos.y,
+                          reticule[i].pos.z);
+            glBitmap(8, 16, 0, 0, 8, 0,
+                    (void*)(intptr_t)(BITFONT_OFFSET(reticule[i].text[0])));
             glPopAttrib();
         }
         /*** end scene ***/
