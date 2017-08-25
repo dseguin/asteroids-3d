@@ -1,0 +1,39 @@
+version: '1.0.0-alpha-{build}'
+
+image: Visual Studio 2015
+
+clone_depth: 10
+
+platform:
+  - x86
+  - x64
+
+configuration: Release
+
+install:
+  - git submodule update --init
+
+build:
+    project: VisualStudio/asteroids-3d.sln
+    verbosity: normal
+
+before_build: nuget restore VisualStudio/asteroids-3d.sln
+
+after_build:
+    - if %PLATFORM%==x86 (cd VisualStudio\Release & del asteroids-3d.iobj & del asteroids-3d.ipdb & del asteroids-3d.pdb & del asteroids-3d.obj & del vc14?.pdb & rmdir /S /Q asteroids-3d.tlog)
+    - if %PLATFORM%==x64 (cd VisualStudio\x64\Release & del asteroids-3d.iobj & del asteroids-3d.ipdb & del asteroids-3d.pdb & del asteroids-3d.obj & del vc14?.pdb & rmdir /S /Q asteroids-3d.tlog)
+
+artifacts:
+    - path: VisualStudio\Release
+      name: asteroids-3d_latest_windows_x86
+      type: zip
+
+    - path: VisualStudio\x64\Release
+      name: asteroids-3d_latest_windows_x64
+      type: zip
+
+notifications:
+  - provider: Email
+    to:
+      - davidseguin@live.ca
+

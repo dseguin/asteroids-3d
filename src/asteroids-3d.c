@@ -28,6 +28,21 @@
  *
  *****************************************************************************/
 
+#ifdef _WIN32
+  #pragma comment(lib, "opengl32.lib")
+  #include <Windows.h>
+#endif
+#include <GL/gl.h>
+#include <SDL.h>
+#ifdef _WIN32
+  #include <SDL_main.h>
+  #include <SDL_opengl_glext.h>
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-qual"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -36,13 +51,6 @@
 #define STBI_ASSERT(x) /*don't use assert.h*/
 #include "../ext/stb/stb_image.h"
 #pragma GCC diagnostic pop
-
-#include <SDL.h>
-#include <GL/gl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 
 #ifndef M_PI
   #ifdef M_PIl
