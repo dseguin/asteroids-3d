@@ -28,10 +28,20 @@
  *
  *****************************************************************************/
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_ASSERT(x) /*don't use assert.h*/
+#include "../ext/stb/stb_image.h"
+#pragma GCC diagnostic pop
+
 #include <SDL.h>
 #include <GL/gl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #ifndef M_PI
@@ -53,6 +63,8 @@
 #define ASTER_SMALL    1
 #define true           '\x01'
 #define false          '\x00'
+
+#define BITFONT_OFFSET(x) (1024*(7 - (x/16)) + 2*(x%16))
 
 const float radmod = M_PI/180.f;
 const float target_time = 50.f/3.f;
@@ -88,7 +100,7 @@ glBufferDataARB_Func glBufferDataARB_ptr = 0;
  * in that order.
  **/
 typedef struct A3DModel {
-    char      file_root[256];
+    char     *file_root;
     unsigned *index_data;  /*don't expect to */
     float    *vertex_data; /*access these directly*/
     int       index_count;
@@ -161,6 +173,14 @@ typedef struct A3DCamera {
     float     pos_offset[3]; /*driftcam position*/
     float     roll;          /*driftcam roll*/
 } A3DCamera;
+
+typedef struct A3DImage {
+    char          *filename;
+    unsigned char *data;
+    int            width;
+    int            height;
+    int            depth;
+} A3DImage;
 
 /*** Reset game objects ***
  *
@@ -322,7 +342,12 @@ int main(void)
     /*vars*/
     bool          loop_exit      = false,
                   skip_dt        = false;
-    char          win_title[256] = {'\0'};
+    char          win_title[256] = {'\0'},
+                  t_fps[16]      = {'\0'},
+                  t_mspf[16]     = {'\0'},
+                  t_relvel[32]   = {'\0'},
+                  t_score[32]    = {'\0'},
+                  t_topscore[32] = {'\0'};
     float         aspect_ratio   = 1.f,
                   fov            = 70.f,
                   top_clip       = 0.f,
@@ -339,7 +364,8 @@ int main(void)
     float         tmp_diffuse_color[] = {0.f, 0.8f, 0.f, 1.f};
     int           i,j,k,
                   width_real,
-                  height_real;
+                  height_real,
+                  debug_level      = 1;
     unsigned      shot_loop_count  = 0,
                   spawn_loop_count = 0,
                   title_loop_count = 0,
@@ -376,6 +402,7 @@ int main(void)
                   m_blast,
                   m_boundbox,
                  *m_ptr_all[5];
+    A3DImage      i_font;
 
     /*initialize projectiles*/
     a_shot = malloc(sizeof(A3DActor)*MAX_SHOTS);
@@ -422,12 +449,15 @@ int main(void)
     /*tie camera to player actor*/
     camera.player = &a_player;
 
+    /*set image path*/
+    i_font.filename = "data/image/8x16_bitfont.png";
+
     /*set model path and pointers for load_models*/
-    strcpy(m_player.file_root, "data/model/player1");
-    strcpy(m_projectile.file_root, "data/model/projectile1");
-    strcpy(m_asteroid.file_root, "data/model/asteroid1");
-    strcpy(m_blast.file_root, "data/model/blast2");
-    strcpy(m_boundbox.file_root, "data/model/bounds1");
+    m_player.file_root     = "data/model/player1";
+    m_projectile.file_root = "data/model/projectile1";
+    m_asteroid.file_root   = "data/model/asteroid1";
+    m_blast.file_root      = "data/model/blast2";
+    m_boundbox.file_root   = "data/model/bounds1";
     m_ptr_all[0] = &m_player;
     m_ptr_all[1] = &m_projectile;
     m_ptr_all[2] = &m_asteroid;
@@ -480,6 +510,32 @@ int main(void)
     /*load models*/
     if(!load_models(m_ptr_all, 5))
         return 1;
+    /*load images*/
+    i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height, &i_font.depth, 0);
+    if(i_font.data && i_font.depth == 1)
+    {
+        unsigned char *packed;
+        unsigned pixbuffer;
+        int bytes = (i_font.width * i_font.height)/8;
+        packed = malloc(bytes);
+        for(i = 0; i < bytes; i++)
+        {
+            packed[i] = 0x00;
+            for(j = 0; j < 8; j++)
+            {
+                if(i_font.data[i*8+j] > 0) packed[i] |= 0x01;
+                if(j < 7) packed[i] = packed[i] << 1;
+            }
+        }
+        free(i_font.data);
+        glGenBuffersARB_ptr(1, &pixbuffer);
+        glBindBufferARB_ptr(GL_PIXEL_UNPACK_BUFFER, pixbuffer);
+        glBufferDataARB_ptr(GL_PIXEL_UNPACK_BUFFER, bytes, packed, GL_STATIC_DRAW);
+        printf("Loaded image %s - %dx%d bitmap\n", i_font.filename, i_font.width, i_font.height);
+        free(packed);
+    }
+    else
+        fprintf(stderr, "Could not process image file %s\n", i_font.filename);
     /*setup*/
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -564,6 +620,11 @@ int main(void)
                 {
                     if(camera.driftcam) camera.driftcam = false;
                     else                camera.driftcam = true;
+                }
+                else if(ev_main.key.keysym.scancode == SDL_SCANCODE_GRAVE)
+                {
+                    if(debug_level == 2) debug_level = 0;
+                    else                 debug_level++;
                 }
                 else if(ev_main.key.keysym.scancode == SDL_SCANCODE_W)
                     camera.forward  = true;
@@ -801,6 +862,43 @@ int main(void)
         /*** drawing ***/
         glViewport(0, 0, width_real, height_real);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        /*bitmap text*/
+        if(debug_level)
+        {
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(left_clip, right_clip, bottom_clip, top_clip, -1.f, 1.f);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 256);
+            glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.01f, 0.f);
+            for(i = 0; i < (signed)strlen(t_relvel); i++)   /*relative vel*/
+                glBitmap(16, 32, 0, 0, 16, 0,
+                        (void*)(intptr_t)(BITFONT_OFFSET(t_relvel[i])));
+            glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_relvel), 33,
+                    (void*)(intptr_t)(BITFONT_OFFSET(' ')));
+            for(i = 0; i < (signed)strlen(t_topscore); i++) /*top score*/
+                glBitmap(16, 32, 0, 0, 16, 0, 
+                        (void*)(intptr_t)(BITFONT_OFFSET(t_topscore[i])));
+            glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_topscore), 33,
+                    (void*)(intptr_t)(BITFONT_OFFSET(' ')));
+            for(i = 0; i < (signed)strlen(t_score); i++)    /*score*/
+                glBitmap(16, 32, 0, 0, 16, 0,
+                        (void*)(intptr_t)(BITFONT_OFFSET(t_score[i])));
+            if(debug_level > 1)
+            {
+                glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_score), 33,
+                        (void*)(intptr_t)(BITFONT_OFFSET(' ')));
+                for(i = 0; i < (signed)strlen(t_mspf); i++) /*ms/F*/
+                    glBitmap(16, 32, 0, 0, 16, 0,
+                            (void*)(intptr_t)(BITFONT_OFFSET(t_mspf[i])));
+                glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_mspf), 33,
+                        (void*)(intptr_t)(BITFONT_OFFSET(' ')));
+                for(i = 0; i < (signed)strlen(t_fps); i++)  /*FPS*/
+                    glBitmap(16, 32, 0, 0, 16, 0,
+                            (void*)(intptr_t)(BITFONT_OFFSET(t_fps[i])));
+            }
+        }
         /*projection*/
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -909,15 +1007,20 @@ int main(void)
         /*** end scene ***/
         SDL_GL_SwapWindow(win_main);
         frametime -= mintime;
-        /*update window title*/
-        if(currtime - title_loop_count > 1000)
+        /*update text/window title*/
+        if(currtime - title_loop_count > 500)
         {
             float relvel = 16.f/(inv_sqrt_dwh(a_player.vel.x*a_player.vel.x +
                                               a_player.vel.y*a_player.vel.y +
                                               a_player.vel.z*a_player.vel.z));
             title_loop_count = currtime;
-            sprintf(win_title, "Asteroids 3D - SCORE: %u - TOPSCORE: %u --- Relative velocity: %.2f m/s --- ms/f: %u",
-                    score, topscore, relvel, difftime);
+            sprintf(t_mspf,     "%u ms/F", difftime);
+            sprintf(t_fps,      "%.2f FPS", 1000.f/(float)difftime);
+            sprintf(t_relvel,   "Relative velocity: %.2f m/s", relvel);
+            sprintf(t_score,    "Score:     %u", score);
+            sprintf(t_topscore, "Top Score: %u", topscore);
+            sprintf(win_title, "Asteroids 3D - %s - %s --- %s --- %s",
+                    t_score, t_topscore, t_relvel, t_fps);
             SDL_SetWindowTitle(win_main, win_title);
         }
     }

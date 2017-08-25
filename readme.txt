@@ -19,7 +19,8 @@ Controls:
   up       - LSHIFT
   down     - LCTRL
   shoot    - left mouse button
-  driftcam - BACKSPACE
+  toggle camera drift - BACKSPACE
+  toggle debug info   - BACKTICK/TILDE
   quit     - ESC
 
 Dependencies:
