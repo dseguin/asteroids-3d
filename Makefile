@@ -44,7 +44,10 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.$(SRCEXT)
 		$(CC) $(CFLAGS) $(INC) -c -o $@ $<
 
 rm-comments: $(CPPCOMMENT)
+	@echo " Stripping C++ style comments from $<..."
+	@echo " sed -i.orig 's|[[:blank:]]*//.*||' $<"
 	@sed -i.orig 's|[[:blank:]]*//.*||' $<
+	@echo ""
 
 makedirs:
 	@mkdir -p $(BUILDDIR)

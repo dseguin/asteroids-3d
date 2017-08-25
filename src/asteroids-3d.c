@@ -64,7 +64,7 @@
 #define true           '\x01'
 #define false          '\x00'
 
-#define BITFONT_OFFSET(x) (1024*(7 - (x/16)) + 2*(x%16))
+#define BITFONT_OFFSET(x) (512*(15 - (x/16)) + 2*(x%16))
 
 const float radmod = M_PI/180.f;
 const float target_time = 50.f/3.f;
@@ -174,6 +174,13 @@ typedef struct A3DCamera {
     float     roll;          /*driftcam roll*/
 } A3DCamera;
 
+/*** Image object ***
+ *
+ * Struct with properties for use with stb_image.h.
+ * The image filename is set early on, everything else
+ * is set by stbi_load(). 'depth' refers to the number
+ * of 8 bit components of the image.
+ **/
 typedef struct A3DImage {
     char          *filename;
     unsigned char *data;
@@ -450,7 +457,7 @@ int main(void)
     camera.player = &a_player;
 
     /*set image path*/
-    i_font.filename = "data/image/8x16_bitfont.png";
+    i_font.filename = "data/image/16x16_bitfont.png";
 
     /*set model path and pointers for load_models*/
     m_player.file_root     = "data/model/player1";
@@ -511,6 +518,7 @@ int main(void)
     if(!load_models(m_ptr_all, 5))
         return 1;
     /*load images*/
+    stbi_set_flip_vertically_on_load(1);
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height, &i_font.depth, 0);
     if(i_font.data && i_font.depth == 1)
     {
@@ -871,31 +879,31 @@ int main(void)
             glMatrixMode(GL_MODELVIEW);
             glLoadIdentity();
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 256);
-            glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.01f, 0.f);
+            glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.02f, 0.f);
             for(i = 0; i < (signed)strlen(t_relvel); i++)   /*relative vel*/
-                glBitmap(16, 32, 0, 0, 16, 0,
+                glBitmap(16, 16, 0, 0, 16, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_relvel[i])));
-            glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_relvel), 33,
+            glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_relvel), 33,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_topscore); i++) /*top score*/
-                glBitmap(16, 32, 0, 0, 16, 0, 
+                glBitmap(16, 16, 0, 0, 16, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_topscore[i])));
-            glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_topscore), 33,
+            glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_topscore), 17,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_score); i++)    /*score*/
-                glBitmap(16, 32, 0, 0, 16, 0,
+                glBitmap(16, 16, 0, 0, 16, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_score[i])));
             if(debug_level > 1)
             {
-                glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_score), 33,
+                glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_score), 33,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_mspf); i++) /*ms/F*/
-                    glBitmap(16, 32, 0, 0, 16, 0,
+                    glBitmap(16, 16, 0, 0, 16, 0,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_mspf[i])));
-                glBitmap(16, 32, 0, 0, -16*(signed)strlen(t_mspf), 33,
+                glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_mspf), 17,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_fps); i++)  /*FPS*/
-                    glBitmap(16, 32, 0, 0, 16, 0,
+                    glBitmap(16, 16, 0, 0, 16, 0,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_fps[i])));
             }
         }
