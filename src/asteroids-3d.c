@@ -127,8 +127,8 @@ typedef struct A3DModel {
  * currently to indicate size.
  **/
 typedef struct A3DActor {
-    bool is_spawned;
-    float mass;
+    bool      is_spawned;
+    float     mass;
     struct {
         float x;
         float y;
@@ -181,6 +181,22 @@ typedef struct A3DCamera {
     float     pos_offset[3]; /*driftcam position*/
     float     roll;          /*driftcam roll*/
 } A3DCamera;
+
+/*** Popup score text ***
+ *
+ * Text that pops up after hitting an asteroid.
+ * 'offset' serves as a timer.
+ **/
+typedef struct A3DScoreText {
+    bool      is_spawned;
+    char      text[8];
+    float     offset;
+    struct {
+        float x;
+        float y;
+        float z;
+    } pos;
+} A3DScoreText;
 
 /*** Image object ***
  *
@@ -419,6 +435,7 @@ int main(void)
                   m_boundbox,
                  *m_ptr_all[5];
     A3DImage      i_font;
+    A3DScoreText  scoretext[3] = {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
 
     /*initialize projectiles*/
     a_shot = malloc(sizeof(A3DActor)*MAX_SHOTS);
@@ -527,8 +544,8 @@ int main(void)
     if(!load_models(m_ptr_all, 5))
         return 1;
     /*load images*/
-    /*stbi_set_flip_vertically_on_load(1);*/
-    i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height, &i_font.depth, 0);
+    i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height,
+                           &i_font.depth, 0);
     if(i_font.data && i_font.depth == 1)
     {
         unsigned char *packed;
@@ -547,8 +564,10 @@ int main(void)
         free(i_font.data);
         glGenBuffersARB_ptr(1, &pixbuffer);
         glBindBufferARB_ptr(GL_PIXEL_UNPACK_BUFFER, pixbuffer);
-        glBufferDataARB_ptr(GL_PIXEL_UNPACK_BUFFER, bytes, packed, GL_STATIC_DRAW);
-        printf("Loaded image %s - %dx%d bitmap\n", i_font.filename, i_font.width, i_font.height);
+        glBufferDataARB_ptr(GL_PIXEL_UNPACK_BUFFER, bytes, packed,
+                            GL_STATIC_DRAW);
+        printf("Loaded image %s - %dx%d bitmap\n",
+                i_font.filename, i_font.width, i_font.height);
         free(packed);
     }
     else
@@ -652,7 +671,8 @@ int main(void)
                         fullscreen = false;
                         SDL_SetWindowFullscreen(win_main, 0);
                         SDL_SetWindowSize(win_main, 800, 600);
-                        SDL_GL_GetDrawableSize(win_main, &width_real, &height_real);
+                        SDL_GL_GetDrawableSize(win_main, &width_real,
+                                              &height_real);
                     }
                     else
                     {
@@ -660,8 +680,10 @@ int main(void)
                         display = SDL_GetWindowDisplayIndex(win_main);
                         SDL_GetDesktopDisplayMode(display, &d_mode);
                         SDL_SetWindowDisplayMode(win_main, &d_mode);
-                        SDL_SetWindowFullscreen(win_main, SDL_WINDOW_FULLSCREEN);
-                        SDL_GL_GetDrawableSize(win_main, &width_real, &height_real);
+                        SDL_SetWindowFullscreen(win_main,
+                                                SDL_WINDOW_FULLSCREEN);
+                        SDL_GL_GetDrawableSize(win_main, &width_real,
+                                              &height_real);
                     }
                 }
                 else if(ev_main.key.keysym.scancode == SDL_SCANCODE_W)
@@ -805,21 +827,36 @@ int main(void)
                 if(inv_sqrt_dwh(dx*dx + dy*dy + dz*dz) < 0.9f/a_aster[i].mass)
                     continue;
                 a_shot[j].is_spawned = false;
+                /*spawn scoretext object*/
+                for(k = 0; k < 3; k++)
+                {
+                    if(scoretext[k].is_spawned)
+                        continue;
+                    scoretext[k].is_spawned = true;
+                    scoretext[k].offset     = 0.f;
+                    scoretext[k].pos.x      = a_aster[i].pos.x;
+                    scoretext[k].pos.y      = a_aster[i].pos.y;
+                    scoretext[k].pos.z      = a_aster[i].pos.z;
+                    break;
+                }
                 /*spawn smaller asteroid*/
                 if(a_aster[i].mass > (ASTER_LARGE + ASTER_MED)*0.5f)
                 {
                     a_aster[i].mass = ASTER_MED;
                     score += 10;
+                    if(k < 3) strcpy(scoretext[k].text, "+10");
                 }
                 else if(a_aster[i].mass > (ASTER_SMALL + ASTER_MED)*0.5f)
                 {
                     a_aster[i].mass = ASTER_SMALL;
                     score += 20;
+                    if(k < 3) strcpy(scoretext[k].text, "+20");
                 }
                 else
                 {
                     a_aster[i].is_spawned = false;
                     score += 50;
+                    if(k < 3) strcpy(scoretext[k].text, "+50");
                 }
                 a_aster[i].vel.x           = ((rand()%200) - 100) * 0.005f;
                 a_aster[i].vel.y           = ((rand()%200) - 100) * 0.005f;
@@ -874,6 +911,16 @@ int main(void)
                 a_aster[i].euler_rot.roll  = ((rand()%400) - 200) * 0.0001f;
                 break;
             }
+        }
+        /*update scoretext offset*/
+        for(i = 0; i < 3; i++)
+        {
+            if(!scoretext[i].is_spawned)
+                continue;
+            if(scoretext[i].offset > 1.f)
+               scoretext[i].is_spawned = false;
+            else
+               scoretext[i].offset += 0.02f * timemod;
         }
         /*grow blast effect*/
         if(!a_player.is_spawned && a_blast.is_spawned)
@@ -1041,6 +1088,22 @@ int main(void)
                 glScalef(a_aster[i].mass, a_aster[i].mass, a_aster[i].mass);
                 draw_model(m_asteroid);
             glPopMatrix();
+        }
+        /*scoretext objects*/
+        for(i = 0; i < 3; i++)
+        {
+            if(!scoretext[i].is_spawned)
+                continue;
+            glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);
+            glDisable(GL_LIGHTING);
+            glColor3f(0.5f - 0.5f*(scoretext[i].offset),
+                      1.f - scoretext[i].offset, 0.f);
+            glRasterPos3f(scoretext[i].pos.x, scoretext[i].pos.y,
+                          scoretext[i].pos.z);
+            for(j = 0; j < (signed)strlen(scoretext[i].text); j++)
+                glBitmap(8, 16, 0, 0, 8, 0,
+                    (void*)(intptr_t)(BITFONT_OFFSET(scoretext[i].text[j])));
+            glPopAttrib();
         }
         /*** end scene ***/
         SDL_GL_SwapWindow(win_main);
