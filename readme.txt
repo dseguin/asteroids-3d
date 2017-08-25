@@ -21,6 +21,7 @@ Controls:
   shoot    - left mouse button
   toggle camera drift - BACKSPACE
   toggle debug info   - BACKTICK/TILDE
+  toggle fullscreen   - F1
   quit     - ESC
 
 Dependencies:

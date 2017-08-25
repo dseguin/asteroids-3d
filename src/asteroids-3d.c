@@ -72,7 +72,7 @@
 #define true           '\x01'
 #define false          '\x00'
 
-#define BITFONT_OFFSET(x) (512*(15 - (x/16)) + 2*(x%16))
+#define BITFONT_OFFSET(x) (256*(7 - (x/16)) + (x%16))
 
 const float radmod = M_PI/180.f;
 const float target_time = 50.f/3.f;
@@ -356,7 +356,8 @@ int main(void)
 {
     /*vars*/
     bool          loop_exit      = false,
-                  skip_dt        = false;
+                  skip_dt        = false,
+                  fullscreen     = false;
     char          win_title[256] = {'\0'},
                   t_fps[16]      = {'\0'},
                   t_mspf[16]     = {'\0'},
@@ -465,7 +466,7 @@ int main(void)
     camera.player = &a_player;
 
     /*set image path*/
-    i_font.filename = "data/image/16x16_bitfont.png";
+    i_font.filename = "data/image/8x16s_bitfont.png";
 
     /*set model path and pointers for load_models*/
     m_player.file_root     = "data/model/player1";
@@ -526,7 +527,7 @@ int main(void)
     if(!load_models(m_ptr_all, 5))
         return 1;
     /*load images*/
-    stbi_set_flip_vertically_on_load(1);
+    /*stbi_set_flip_vertically_on_load(1);*/
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height, &i_font.depth, 0);
     if(i_font.data && i_font.depth == 1)
     {
@@ -641,6 +642,27 @@ int main(void)
                 {
                     if(debug_level == 2) debug_level = 0;
                     else                 debug_level++;
+                }
+                else if(ev_main.key.keysym.scancode == SDL_SCANCODE_F1)
+                {
+                    int display;
+                    SDL_DisplayMode d_mode;
+                    if(fullscreen)
+                    {
+                        fullscreen = false;
+                        SDL_SetWindowFullscreen(win_main, 0);
+                        SDL_SetWindowSize(win_main, 800, 600);
+                        SDL_GL_GetDrawableSize(win_main, &width_real, &height_real);
+                    }
+                    else
+                    {
+                        fullscreen = true;
+                        display = SDL_GetWindowDisplayIndex(win_main);
+                        SDL_GetDesktopDisplayMode(display, &d_mode);
+                        SDL_SetWindowDisplayMode(win_main, &d_mode);
+                        SDL_SetWindowFullscreen(win_main, SDL_WINDOW_FULLSCREEN);
+                        SDL_GL_GetDrawableSize(win_main, &width_real, &height_real);
+                    }
                 }
                 else if(ev_main.key.keysym.scancode == SDL_SCANCODE_W)
                     camera.forward  = true;
@@ -886,32 +908,32 @@ int main(void)
             glOrtho(left_clip, right_clip, bottom_clip, top_clip, -1.f, 1.f);
             glMatrixMode(GL_MODELVIEW);
             glLoadIdentity();
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 256);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
             glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.02f, 0.f);
             for(i = 0; i < (signed)strlen(t_relvel); i++)   /*relative vel*/
-                glBitmap(16, 16, 0, 0, 16, 0,
+                glBitmap(8, 16, 0, 0, 8, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_relvel[i])));
-            glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_relvel), 33,
+            glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_relvel), 33,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_topscore); i++) /*top score*/
-                glBitmap(16, 16, 0, 0, 16, 0,
+                glBitmap(8, 16, 0, 0, 8, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_topscore[i])));
-            glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_topscore), 17,
+            glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_topscore), 17,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_score); i++)    /*score*/
-                glBitmap(16, 16, 0, 0, 16, 0,
+                glBitmap(8, 16, 0, 0, 8, 0,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_score[i])));
             if(debug_level > 1)
             {
-                glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_score), 33,
+                glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_score), 33,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_mspf); i++) /*ms/F*/
-                    glBitmap(16, 16, 0, 0, 16, 0,
+                    glBitmap(8, 16, 0, 0, 8, 0,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_mspf[i])));
-                glBitmap(16, 16, 0, 0, -16*(signed)strlen(t_mspf), 17,
+                glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_mspf), 17,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_fps); i++)  /*FPS*/
-                    glBitmap(16, 16, 0, 0, 16, 0,
+                    glBitmap(8, 16, 0, 0, 8, 0,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_fps[i])));
             }
         }
