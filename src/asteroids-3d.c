@@ -43,14 +43,18 @@
 #include <string.h>
 #include <time.h>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
+#ifdef __GNUC__
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wcast-qual"
+  #pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_ASSERT(x) /*don't use assert.h*/
 #include "../ext/stb/stb_image.h"
-#pragma GCC diagnostic pop
+#ifdef __GNUC__
+  #pragma GCC diagnostic pop
+#endif
 
 #ifndef M_PI
   #ifdef M_PIl
@@ -1013,29 +1017,29 @@ int main(void)
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
             glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.02f, 0.f);
             for(i = 0; i < (signed)strlen(t_relvel); i++)   /*relative vel*/
-                glBitmap(8, 16, 0, 0, 8, 0,
+                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_relvel[i])));
-            glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_relvel), 33,
+            glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_relvel), 33.f,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_topscore); i++) /*top score*/
-                glBitmap(8, 16, 0, 0, 8, 0,
+                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_topscore[i])));
-            glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_topscore), 17,
+            glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_topscore), 17.f,
                     (void*)(intptr_t)(BITFONT_OFFSET(' ')));
             for(i = 0; i < (signed)strlen(t_score); i++)    /*score*/
-                glBitmap(8, 16, 0, 0, 8, 0,
+                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                         (void*)(intptr_t)(BITFONT_OFFSET(t_score[i])));
             if(debug_level > 1)
             {
-                glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_score), 33,
+                glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_score), 33.f,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_mspf); i++) /*ms/F*/
-                    glBitmap(8, 16, 0, 0, 8, 0,
+                    glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_mspf[i])));
-                glBitmap(8, 16, 0, 0, -8*(signed)strlen(t_mspf), 17,
+                glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_mspf), 17.f,
                         (void*)(intptr_t)(BITFONT_OFFSET(' ')));
                 for(i = 0; i < (signed)strlen(t_fps); i++)  /*FPS*/
-                    glBitmap(8, 16, 0, 0, 8, 0,
+                    glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                             (void*)(intptr_t)(BITFONT_OFFSET(t_fps[i])));
             }
         }
@@ -1156,7 +1160,7 @@ int main(void)
             glRasterPos3f(scoretext[i].pos.x, scoretext[i].pos.y,
                           scoretext[i].pos.z);
             for(j = 0; j < (signed)strlen(scoretext[i].text); j++)
-                glBitmap(8, 16, 0, 0, 8, 0,
+                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                     (void*)(intptr_t)(BITFONT_OFFSET(scoretext[i].text[j])));
             glPopAttrib();
         }
@@ -1169,7 +1173,7 @@ int main(void)
             glColor3f(1.f, 1.f, 1.f);
             glRasterPos3f(reticule[i].pos.x, reticule[i].pos.y,
                           reticule[i].pos.z);
-            glBitmap(8, 16, 0, 0, 8, 0,
+            glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
                     (void*)(intptr_t)(BITFONT_OFFSET(reticule[i].text[0])));
             glPopAttrib();
         }
