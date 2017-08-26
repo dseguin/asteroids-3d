@@ -6,6 +6,7 @@ CC ?= gcc
 SRCDIR := src
 BUILDDIR := build
 TARGETDIR := bin
+DATADIR := data
 TARGET := $(TARGETDIR)/asteroids-3d
 
 CPPCOMMENT := ext/stb/stb_image.h
@@ -23,15 +24,15 @@ RELEASEFLAGS := -O2 -Wall -Wl,--strip-all
 LIB := -lm -lSDL2 -lGL
 INC := -Iinclude `sdl2-config --cflags`
 
-all: | rm-comments c89 debug-flag makedirs $(OBJECTS) $(TARGET)
+all: | rm-comments c89 debug-flag makedirs $(OBJECTS) $(TARGET) cp-data
 
-debug-c89: | rm-comments c89 debug-flag makedirs $(OBJECTS) $(TARGET)
+debug-c89: | rm-comments c89 debug-flag makedirs $(OBJECTS) $(TARGET) cp-data
 
-release-c89: | rm-comments c89 release-flag makedirs $(OBJECTS) $(TARGET)
+release-c89: | rm-comments c89 release-flag makedirs $(OBJECTS) $(TARGET) cp-data
 
-debug-gnu89: | rm-comments gnu89 debug-flag makedirs $(OBJECTS) $(TARGET)
+debug-gnu89: | rm-comments gnu89 debug-flag makedirs $(OBJECTS) $(TARGET) cp-data
 
-release-gnu89: | rm-comments gnu89 release-flag makedirs $(OBJECTS) $(TARGET)
+release-gnu89: | rm-comments gnu89 release-flag makedirs $(OBJECTS) $(TARGET) cp-data
 
 $(TARGET): $(OBJECTS)
 	@echo ""
@@ -52,6 +53,11 @@ rm-comments: $(CPPCOMMENT)
 makedirs:
 	@mkdir -p $(BUILDDIR)
 	@mkdir -p $(TARGETDIR)
+
+cp-data: $(DATADIR)
+	@echo ""
+	@echo " Copying game data to $(TARGETDIR)..."
+	@cp -rv $< $(TARGETDIR)
 
 debug-flag:
 	$(eval CFLAGS += $(DEBUGFLAGS))

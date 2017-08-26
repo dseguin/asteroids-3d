@@ -379,9 +379,10 @@ int main(void)
                   t_mspf[16]     = {'\0'},
                   t_relvel[32]   = {'\0'},
                   t_score[32]    = {'\0'},
-                  t_topscore[32] = {'\0'};
+                  t_topscore[32] = {'\0'},
+                 *basepath;
     float         aspect_ratio   = 1.f,
-                  fov            = 70.f,
+                  fov            = 80.f,
                   top_clip       = 0.f,
                   bottom_clip    = 0.f,
                   left_clip      = 0.f,
@@ -491,27 +492,45 @@ int main(void)
     reticule[1].offset = 30.f;
     reticule[2].offset = 10.f;
 
-    /*set image path*/
-    i_font.filename = "data/image/8x16s_bitfont.png";
+    /*get base path name*/
+    if(!(basepath = SDL_GetBasePath()))
+    {
+        fprintf(stderr, "Could not get executable base path.\n");
+        return 1;
+    }
 
     /*set model path and pointers for load_models*/
-    m_player.file_root     = "data/model/player1";
-    m_projectile.file_root = "data/model/projectile1";
-    m_asteroid.file_root   = "data/model/asteroid1";
-    m_blast.file_root      = "data/model/blast2";
-    m_boundbox.file_root   = "data/model/bounds1";
+    m_player.file_root     = malloc(strlen(basepath) + 32);
+    m_projectile.file_root = malloc(strlen(basepath) + 32);
+    m_asteroid.file_root   = malloc(strlen(basepath) + 32);
+    m_blast.file_root      = malloc(strlen(basepath) + 32);
+    m_boundbox.file_root   = malloc(strlen(basepath) + 32);
+    strcpy(m_player.file_root,     basepath);
+    strcpy(m_projectile.file_root, basepath);
+    strcpy(m_asteroid.file_root,   basepath);
+    strcpy(m_blast.file_root,      basepath);
+    strcpy(m_boundbox.file_root,   basepath);
+    strcat(m_player.file_root,     "data/model/player1");
+    strcat(m_projectile.file_root, "data/model/projectile1");
+    strcat(m_asteroid.file_root,   "data/model/asteroid1");
+    strcat(m_blast.file_root,      "data/model/blast2");
+    strcat(m_boundbox.file_root,   "data/model/bounds1");
     m_ptr_all[0] = &m_player;
     m_ptr_all[1] = &m_projectile;
     m_ptr_all[2] = &m_asteroid;
     m_ptr_all[3] = &m_blast;
     m_ptr_all[4] = &m_boundbox;
 
+    /*set image path*/
+    i_font.filename = malloc(strlen(basepath) + 32);
+    strcpy(i_font.filename, basepath);
+    strcat(i_font.filename, "data/image/8x16s_bitfont.png");
+
+    /*free base path*/
+    free(basepath);
+
     /*init*/
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-                        SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     win_main = SDL_CreateWindow("Asteroids 3D", SDL_WINDOWPOS_UNDEFINED,
             SDL_WINDOWPOS_UNDEFINED, 800, 600, SDL_WINDOW_OPENGL);
     if(!win_main)
@@ -552,6 +571,11 @@ int main(void)
     /*load models*/
     if(!load_models(m_ptr_all, 5))
         return 1;
+    free(m_player.file_root);
+    free(m_projectile.file_root);
+    free(m_asteroid.file_root);
+    free(m_blast.file_root);
+    free(m_boundbox.file_root);
     /*load images*/
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height,
                            &i_font.depth, 0);
@@ -580,7 +604,12 @@ int main(void)
         free(packed);
     }
     else
+    {
         fprintf(stderr, "Could not process image file %s\n", i_font.filename);
+        perror("fopen error");
+        return 1;
+    }
+    free(i_font.filename);
     /*setup*/
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -1520,12 +1549,13 @@ bool load_model_from_file(const char *file_prefix, A3DModel *model)
     int i = 0;
 
     /*allocate apropriate space for path*/
-    file_path = (char *)malloc(strlen(file_prefix) + 5);
+    file_path = malloc(strlen(file_prefix) + 5);
     /*get metadata*/
     strcpy(file_path, file_prefix);
     strcat(file_path, ".met");
     if((file_data = fopen(file_path, "r")) == NULL)
     {
+        fprintf(stderr, "Could not open: %s\n", file_path);
         perror("fopen error");
         free(file_path);
         return false;
