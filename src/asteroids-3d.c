@@ -1860,97 +1860,63 @@ void draw_skybox(const A3DImage skybox,
             skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
             (void*)(intptr_t)skybox.offset);
     glPushMatrix();
-    glTranslatef(x, y, z - 100.f);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(100.f, 100.f, 0.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(-100.f, 100.f, 0.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(-100.f, -100.f, 0.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(100.f, -100.f, 0.f);
-    glEnd();
-    glPopMatrix();
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
-    glPushMatrix();
-    glTranslatef(x + 100.f, y, z);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(0.f, 100.f, 100.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(0.f, 100.f, -100.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(0.f, -100.f, -100.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(0.f, -100.f, 100.f);
-    glEnd();
-    glPopMatrix();
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
-    glPushMatrix();
-    glTranslatef(x, y, z + 100.f);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(-100.f, 100.f, 0.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(100.f, 100.f, 0.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(100.f, -100.f, 0.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(-100.f, -100.f, 0.f);
-    glEnd();
-    glPopMatrix();
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
-    glPushMatrix();
-    glTranslatef(x - 100.f, y, z);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(0.f, 100.f, -100.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(0.f, 100.f, 100.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(0.f, -100.f, 100.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(0.f, -100.f, -100.f);
-    glEnd();
-    glPopMatrix();
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
-    glPushMatrix();
-    glTranslatef(x, y - 100.f, z);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(-100.f, 0.f, 100.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(100.f, 0.f, 100.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(100.f, 0.f, -100.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(-100.f, 0.f, -100.f);
-    glEnd();
-    glPopMatrix();
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
-    glPushMatrix();
-    glTranslatef(x, y + 100.f, z);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1.f, 1.f);
-    glVertex3f(-100.f, 0.f, -100.f);
-    glTexCoord2f(0.f, 1.f);
-    glVertex3f(100.f, 0.f, -100.f);
-    glTexCoord2f(0.f, 0.f);
-    glVertex3f(100.f, 0.f, 100.f);
-    glTexCoord2f(1.f, 0.f);
-    glVertex3f(-100.f, 0.f, 100.f);
-    glEnd();
+        glTranslatef(x, y, z);
+        glBegin(GL_QUADS);
+            /*quad 0*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(-100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(-100.f, -100.f, -100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(100.f, -100.f, -100.f);
+            /*quad 1*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(100.f, 100.f, 100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(100.f, -100.f, -100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(100.f, -100.f, 100.f);
+            /*quad 2*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(-100.f, 100.f, 100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(100.f, 100.f, 100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(100.f, -100.f, 100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(-100.f, -100.f, 100.f);
+            /*quad 3*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(-100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(-100.f, 100.f, 100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(-100.f, -100.f, 100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(-100.f, -100.f, -100.f);
+            /*quad 4*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(-100.f, -100.f, 100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(100.f, -100.f, 100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(100.f, -100.f, -100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(-100.f, -100.f, -100.f);
+            /*quad 5*/
+            glTexCoord2f(1.f, 1.f);
+            glVertex3f(-100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 1.f);
+            glVertex3f(100.f, 100.f, -100.f);
+            glTexCoord2f(0.f, 0.f);
+            glVertex3f(100.f, 100.f, 100.f);
+            glTexCoord2f(1.f, 0.f);
+            glVertex3f(-100.f, 100.f, 100.f);
+        glEnd();
     glPopMatrix();
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
     glPopAttrib();
