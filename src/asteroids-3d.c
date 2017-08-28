@@ -104,12 +104,8 @@ glBufferDataARB_Func glBufferDataARB_ptr = 0;
  *
  * Struct containing 3D model data.
  *
- * Index data assumes GL_UNSIGNED_INT type
- * and GL_TRIANGLES drawing order.
- *
- * Vertex data assumes 6 floats per vertex:
- * Normal vector(x,y,z) + Vertex position(x,y,z)
- * in that order.
+ * Vertex and index data follow OpenGL mode and format
+ * conventions for glInterleavedArrays().
  **/
 typedef struct A3DModel {
     char     *file_root;
@@ -550,6 +546,8 @@ int main(void)
     /*set model path and pointers for load_models*/
     generate_boundbox(&m_boundbox, 20);
     generate_skybox(&m_skybox, 100.f);
+    m_boundbox.file_root   = "none";
+    m_skybox.file_root     = "none";
     m_player.file_root     = malloc(strlen(basepath) + 32);
     m_projectile.file_root = malloc(strlen(basepath) + 32);
     m_asteroid.file_root   = malloc(strlen(basepath) + 32);
@@ -1812,7 +1810,7 @@ bool load_models(A3DModel **model, const int count)
     /*load models from file*/
     for(i = 0; i < count; i++)
     {
-        if(model[i]->file_root)
+        if(strcmp(model[i]->file_root, "none"))
         {
             if(!load_model_from_file(model[i]->file_root, model[i]))
             {
