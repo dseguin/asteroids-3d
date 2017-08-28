@@ -207,7 +207,8 @@ typedef struct A3DScoreText {
  * Struct with properties for use with stb_image.h.
  * The image filename is set early on, everything else
  * is set by stbi_load(). 'depth' refers to the number
- * of 8 bit components of the image.
+ * of 8 bit components of the image. 'offset' is the
+ * position of the image in the buffer object.
  **/
 typedef struct A3DImage {
     char          *filename;
@@ -215,6 +216,7 @@ typedef struct A3DImage {
     int            width;
     int            height;
     int            depth;
+    int            offset;
 } A3DImage;
 
 /*** Reset game objects ***
@@ -372,6 +374,20 @@ bool load_models(A3DModel **model, const int count);
  **/
 void draw_model(const A3DModel model);
 
+/*** Draw skybox ***
+ *
+ * Draws a textured skybox.
+ *
+ *     skybox  - Properties of the texture image
+ *     x, y, z - Center coordinates
+ *
+ * Draws 6 quads that are textured with the skybox image
+ * forming a box around the player. The center should be the
+ * negative of the player's current position.
+ **/
+void draw_skybox(const A3DImage skybox,
+                 const float x, const float y, const float z);
+
 int main(void)
 {
     /*vars*/
@@ -439,7 +455,8 @@ int main(void)
                   m_blast,
                   m_boundbox,
                  *m_ptr_all[5];
-    A3DImage      i_font;
+    A3DImage      i_font,
+                  i_skybox;
     A3DScoreText  scoretext[3] = {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
     A3DScoreText  reticule[3]  = {{true,  {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
 
@@ -529,6 +546,9 @@ int main(void)
     i_font.filename = malloc(strlen(basepath) + 32);
     strcpy(i_font.filename, basepath);
     strcat(i_font.filename, "data/image/8x16s_bitfont.png");
+    i_skybox.filename = malloc(strlen(basepath) + 32);
+    strcpy(i_skybox.filename, basepath);
+    strcat(i_skybox.filename, "data/image/skybox0d.png");
 
     /*free base path*/
     free(basepath);
@@ -564,6 +584,11 @@ int main(void)
         fprintf(stderr, "GL_ARB_vertex_buffer_object not supported\n");
         return 1;
     }
+    if(!SDL_GL_ExtensionSupported("GL_ARB_pixel_buffer_object"))
+    {
+        fprintf(stderr, "GL_ARB_pixel_buffer_object not supported\n");
+        return 1;
+    }
     *(void **)(&glDeleteBuffersARB_ptr) =
         SDL_GL_GetProcAddress("glDeleteBuffersARB");
     *(void **)(&glGenBuffersARB_ptr) =
@@ -583,12 +608,16 @@ int main(void)
     /*load images*/
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height,
                            &i_font.depth, 0);
+    i_skybox.data = stbi_load(i_skybox.filename, &i_skybox.width,
+                                &i_skybox.height, &i_skybox.depth, 1);
     if(i_font.data && i_font.depth == 1)
     {
         unsigned char *packed;
         unsigned pixbuffer;
+        int tbytes;
         int bytes = (i_font.width * i_font.height)/8;
         packed = malloc(bytes);
+        /*pack bitmapped font*/
         for(i = 0; i < bytes; i++)
         {
             packed[i] = 0x00;
@@ -599,13 +628,34 @@ int main(void)
             }
         }
         free(i_font.data);
+        i_font.offset = 0;
+        printf("Loaded image %s - %dx%d bitmap\n",
+                i_font.filename, i_font.width, i_font.height);
+        /*pack skybox textures*/
+        tbytes = i_skybox.width * i_skybox.height;
+        if(!i_skybox.data || i_skybox.depth != 1)
+        {
+            fprintf(stderr, "Could not process image file %s\n",
+                    i_skybox.filename);
+            perror("fopen error");
+            return 1;
+        }
+        packed = realloc(packed, bytes + tbytes);
+        memcpy(packed + bytes, i_skybox.data, tbytes);
+        i_skybox.offset = bytes;
+        bytes += tbytes;
+        free(i_skybox.data);
+        printf("Loaded image %s - %dx%dx%d texture\n",
+                i_skybox.filename, i_skybox.width,
+                i_skybox.height, i_skybox.depth);
+        free(i_skybox.filename);
+        /*send packed data to device memory*/
         glGenBuffersARB_ptr(1, &pixbuffer);
         glBindBufferARB_ptr(GL_PIXEL_UNPACK_BUFFER, pixbuffer);
         glBufferDataARB_ptr(GL_PIXEL_UNPACK_BUFFER, bytes, packed,
                             GL_STATIC_DRAW);
-        printf("Loaded image %s - %dx%d bitmap\n",
-                i_font.filename, i_font.width, i_font.height);
         free(packed);
+        printf("Image data total: %d bytes\n\n", bytes);
     }
     else
     {
@@ -1061,6 +1111,8 @@ int main(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
         if(a_player.is_spawned) draw_model(m_player);
         move_camera(&camera, timemod);
+        draw_skybox(i_skybox, -a_player.pos.x, -a_player.pos.y,
+                   -a_player.pos.z);
         /*blast*/
         if(!a_player.is_spawned)
         {
@@ -1781,6 +1833,9 @@ bool load_models(A3DModel **model, const int count)
     /*free index/vertex data*/
     free(all_idata);
     free(all_vdata);
+
+    printf("Model data total: %lu bytes\n\n", sizeof(float) * all_vcount +
+                                              sizeof(unsigned) * all_icount);
     return true;
 }
 
@@ -1789,4 +1844,114 @@ void draw_model(const A3DModel model)
     glInterleavedArrays(GL_N3F_V3F,0,(void*)(intptr_t)model.vertex_offset);
     glDrawElements(GL_TRIANGLES, model.index_count, GL_UNSIGNED_INT,
             (void*)(intptr_t)model.index_offset);
+}
+
+void draw_skybox(const A3DImage skybox,
+                 const float x, const float y, const float z)
+{
+    glPushAttrib(GL_ENABLE_BIT|GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_FOG);
+    glEnable(GL_TEXTURE_2D);
+    glDepthMask(GL_FALSE);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x, y, z - 100.f);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(100.f, 100.f, 0.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(-100.f, 100.f, 0.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(-100.f, -100.f, 0.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(100.f, -100.f, 0.f);
+    glEnd();
+    glPopMatrix();
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x + 100.f, y, z);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(0.f, 100.f, 100.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(0.f, 100.f, -100.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(0.f, -100.f, -100.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(0.f, -100.f, 100.f);
+    glEnd();
+    glPopMatrix();
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x, y, z + 100.f);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(-100.f, 100.f, 0.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(100.f, 100.f, 0.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(100.f, -100.f, 0.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(-100.f, -100.f, 0.f);
+    glEnd();
+    glPopMatrix();
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x - 100.f, y, z);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(0.f, 100.f, -100.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(0.f, 100.f, 100.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(0.f, -100.f, 100.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(0.f, -100.f, -100.f);
+    glEnd();
+    glPopMatrix();
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x, y - 100.f, z);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(-100.f, 0.f, 100.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(100.f, 0.f, 100.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(100.f, 0.f, -100.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(-100.f, 0.f, -100.f);
+    glEnd();
+    glPopMatrix();
+    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
+            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+            (void*)(intptr_t)skybox.offset);
+    glPushMatrix();
+    glTranslatef(x, y + 100.f, z);
+    glBegin(GL_QUADS);
+    glTexCoord2f(1.f, 1.f);
+    glVertex3f(-100.f, 0.f, -100.f);
+    glTexCoord2f(0.f, 1.f);
+    glVertex3f(100.f, 0.f, -100.f);
+    glTexCoord2f(0.f, 0.f);
+    glVertex3f(100.f, 0.f, 100.f);
+    glTexCoord2f(1.f, 0.f);
+    glVertex3f(-100.f, 0.f, 100.f);
+    glEnd();
+    glPopMatrix();
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
+    glPopAttrib();
 }
