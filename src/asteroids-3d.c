@@ -361,7 +361,29 @@ bool load_model_from_file(const char *file_prefix, A3DModel *model);
  **/
 bool load_models(A3DModel **model, const int count);
 
+/*** Generate bounding box ***
+ *
+ * Generates a line grid box based on the number of segments.
+ *
+ *     box      - Bounding box model.
+ *     segments - Number of segments per face.
+ *
+ * Vertex data assumes the format GL_V3F and the mode GL_LINES.
+ * Vertex/index data is malloc'd and should be freed after use.
+ **/
 void generate_boundbox(A3DModel *box, const int segments);
+
+/*** Generate skybox ***
+ *
+ * Generates textured cube based on the radius provided.
+ *
+ *     box    - Skybox model.
+ *     radius - Radius of the skybox cube.
+ *
+ * Vertex data assumes the format GL_T2F_V3F and the mode GL_QUADS.
+ * Vertex/index data is malloc'd and should be freed after use.
+ **/
+void generate_skybox(A3DModel *box, const float radius);
 
 /*** Draw model ***
  *
@@ -389,7 +411,7 @@ void draw_model(const A3DModel model);
  * forming a box around the player. The center should be the
  * negative of the player's current position.
  **/
-void draw_skybox(const A3DImage skybox,
+void draw_skybox(const A3DImage skybox, const A3DModel box,
                  const float x, const float y, const float z);
 
 int main(void)
@@ -458,7 +480,8 @@ int main(void)
                   m_asteroid,
                   m_blast,
                   m_boundbox,
-                 *m_ptr_all[5];
+                  m_skybox,
+                 *m_ptr_all[6];
     A3DImage      i_font,
                   i_skybox;
     A3DScoreText  scoretext[3] = {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
@@ -526,6 +549,7 @@ int main(void)
 
     /*set model path and pointers for load_models*/
     generate_boundbox(&m_boundbox, 20);
+    generate_skybox(&m_skybox, 100.f);
     m_player.file_root     = malloc(strlen(basepath) + 32);
     m_projectile.file_root = malloc(strlen(basepath) + 32);
     m_asteroid.file_root   = malloc(strlen(basepath) + 32);
@@ -543,16 +567,19 @@ int main(void)
     m_asteroid.mode     = GL_TRIANGLES;
     m_blast.mode        = GL_TRIANGLES;
     m_boundbox.mode     = GL_LINES;
+    m_skybox.mode       = GL_QUADS;
     m_player.format     = GL_N3F_V3F;
     m_projectile.format = GL_N3F_V3F;
     m_asteroid.format   = GL_N3F_V3F;
     m_blast.format      = GL_N3F_V3F;
     m_boundbox.format   = GL_V3F;
+    m_skybox.format     = GL_T2F_V3F;
     m_ptr_all[0] = &m_player;
     m_ptr_all[1] = &m_projectile;
     m_ptr_all[2] = &m_asteroid;
     m_ptr_all[3] = &m_blast;
     m_ptr_all[4] = &m_boundbox;
+    m_ptr_all[5] = &m_skybox;
 
     /*set image path*/
     i_font.filename = malloc(strlen(basepath) + 32);
@@ -610,7 +637,7 @@ int main(void)
     *(void **)(&glBufferDataARB_ptr) =
         SDL_GL_GetProcAddress("glBufferDataARB");
     /*load models*/
-    if(!load_models(m_ptr_all, 5))
+    if(!load_models(m_ptr_all, 6))
         return 1;
     free(m_player.file_root);
     free(m_projectile.file_root);
@@ -1122,8 +1149,8 @@ int main(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
         if(a_player.is_spawned) draw_model(m_player);
         move_camera(&camera, timemod);
-        draw_skybox(i_skybox, -a_player.pos.x, -a_player.pos.y,
-                   -a_player.pos.z);
+        draw_skybox(i_skybox, m_skybox, -a_player.pos.x,
+                    -a_player.pos.y, -a_player.pos.z);
         /*blast*/
         if(!a_player.is_spawned)
         {
@@ -1983,11 +2010,88 @@ void generate_boundbox(A3DModel *box, const int segments)
     for(i = 0; i < box->index_count; i++)
         box->index_data[i] = i;
     printf("Bounding box:\n");
-    printf("      Target index count: %d\n", box->index_count);
-    printf("      Target vertex count: %d\n", box->vertex_count);
-    printf("      Final vertex count: %d\n", count);
+    printf("      Index count: %d\n", box->index_count);
+    printf("      Vertex count: %d\n", box->vertex_count);
     printf("      Segments: %d\n", segments);
     printf("      Segment distance: %.2f\n\n", d);
+}
+
+void generate_skybox(A3DModel *box, const float radius)
+{
+    int i,j;
+    box->vertex_count = 120; /*6 sides = 24 vertices = 120 floats*/
+    box->index_count  = 24;
+    box->vertex_data  = malloc(box->vertex_count * sizeof(float));
+    box->index_data   = malloc(box->index_count  * sizeof(unsigned));
+
+    /*texture coords*/
+    for(i = 0; i < box->vertex_count; i += 20)
+    {
+        box->vertex_data[i]    = 1.f;
+        box->vertex_data[i+1]  = 1.f;
+        box->vertex_data[i+5]  = 0.f;
+        box->vertex_data[i+6]  = 1.f;
+        box->vertex_data[i+10] = 0.f;
+        box->vertex_data[i+11] = 0.f;
+        box->vertex_data[i+15] = 1.f;
+        box->vertex_data[i+16] = 0.f;
+    }
+    /*verts*/
+    /*front and back*/
+    for(i = 0, j = 1; i < 40; i += 20, j *= -1)
+    {
+        box->vertex_data[i+2]  = radius*j;
+        box->vertex_data[i+3]  = radius;
+        box->vertex_data[i+4]  = -radius*j;
+        box->vertex_data[i+7]  = -radius*j;
+        box->vertex_data[i+8]  = radius;
+        box->vertex_data[i+9]  = -radius*j;
+        box->vertex_data[i+12] = -radius*j;
+        box->vertex_data[i+13] = -radius;
+        box->vertex_data[i+14] = -radius*j;
+        box->vertex_data[i+17]  = radius*j;
+        box->vertex_data[i+18]  = -radius;
+        box->vertex_data[i+19]  = -radius*j;
+    }
+    /*right and left*/
+    for(i = 40, j = 1; i < 80; i += 20, j *= -1)
+    {
+        box->vertex_data[i+2]  = radius*j;
+        box->vertex_data[i+3]  = radius;
+        box->vertex_data[i+4]  = radius*j;
+        box->vertex_data[i+7]  = radius*j;
+        box->vertex_data[i+8]  = radius;
+        box->vertex_data[i+9]  = -radius*j;
+        box->vertex_data[i+12] = radius*j;
+        box->vertex_data[i+13] = -radius;
+        box->vertex_data[i+14] = -radius*j;
+        box->vertex_data[i+17]  = radius*j;
+        box->vertex_data[i+18]  = -radius;
+        box->vertex_data[i+19]  = radius*j;
+    }
+    /*bottom and top*/
+    for(i = 80, j = 1; i < 120; i += 20, j *= -1)
+    {
+        box->vertex_data[i+2]  = -radius;
+        box->vertex_data[i+3]  = -radius*j;
+        box->vertex_data[i+4]  = radius*j;
+        box->vertex_data[i+7]  = radius;
+        box->vertex_data[i+8]  = -radius*j;
+        box->vertex_data[i+9]  = radius*j;
+        box->vertex_data[i+12] = radius;
+        box->vertex_data[i+13] = -radius*j;
+        box->vertex_data[i+14] = -radius*j;
+        box->vertex_data[i+17]  = -radius;
+        box->vertex_data[i+18]  = -radius*j;
+        box->vertex_data[i+19]  = -radius*j;
+    }
+    /*indices*/
+    for(i = 0; i < box->index_count; i++)
+        box->index_data[i] = i;
+    printf("Skybox:\n");
+    printf("      Index count: %d\n", box->index_count);
+    printf("      Vertex count: %d\n", box->vertex_count);
+    printf("      Radius: %.2f\n\n", radius);
 }
 
 void draw_model(const A3DModel model)
@@ -1997,7 +2101,7 @@ void draw_model(const A3DModel model)
             (void*)(intptr_t)model.index_offset);
 }
 
-void draw_skybox(const A3DImage skybox,
+void draw_skybox(const A3DImage skybox, const A3DModel box,
                  const float x, const float y, const float z)
 {
     glPushAttrib(GL_ENABLE_BIT|GL_DEPTH_BUFFER_BIT);
@@ -2006,68 +2110,13 @@ void draw_skybox(const A3DImage skybox,
     glEnable(GL_TEXTURE_2D);
     glDepthMask(GL_FALSE);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
             skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
             (void*)(intptr_t)skybox.offset);
     glPushMatrix();
         glTranslatef(x, y, z);
-        glBegin(GL_QUADS);
-            /*quad 0*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(-100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(-100.f, -100.f, -100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(100.f, -100.f, -100.f);
-            /*quad 1*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(100.f, 100.f, 100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(100.f, -100.f, -100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(100.f, -100.f, 100.f);
-            /*quad 2*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(-100.f, 100.f, 100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(100.f, 100.f, 100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(100.f, -100.f, 100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(-100.f, -100.f, 100.f);
-            /*quad 3*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(-100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(-100.f, 100.f, 100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(-100.f, -100.f, 100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(-100.f, -100.f, -100.f);
-            /*quad 4*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(-100.f, -100.f, 100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(100.f, -100.f, 100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(100.f, -100.f, -100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(-100.f, -100.f, -100.f);
-            /*quad 5*/
-            glTexCoord2f(1.f, 1.f);
-            glVertex3f(-100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 1.f);
-            glVertex3f(100.f, 100.f, -100.f);
-            glTexCoord2f(0.f, 0.f);
-            glVertex3f(100.f, 100.f, 100.f);
-            glTexCoord2f(1.f, 0.f);
-            glVertex3f(-100.f, 100.f, 100.f);
-        glEnd();
+        draw_model(box);
     glPopMatrix();
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
     glPopAttrib();
