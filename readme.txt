@@ -27,7 +27,7 @@ Controls:
 Dependencies:
 ------------
   SDL    >= 2.0.1
-  OpenGL >= 1.5
+  OpenGL >= 2.1
 
-Build with `make release-c89`
+Build with `make release-c89` or open the solution file with Visual Studio.
 
