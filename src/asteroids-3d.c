@@ -119,6 +119,8 @@ typedef struct A3DModel {
     int       vertex_count;
     int       index_offset;
     int       vertex_offset;
+    int       mode;        /*drawing mode (GL_TRIANGLES, etc.)*/
+    int       format;      /*storage format (GL_V3F, etc.)*/
 } A3DModel;
 
 /*** Actor properties ***
@@ -359,6 +361,8 @@ bool load_model_from_file(const char *file_prefix, A3DModel *model);
  **/
 bool load_models(A3DModel **model, const int count);
 
+void generate_boundbox(A3DModel *box, const int segments);
+
 /*** Draw model ***
  *
  * Draws specified model.
@@ -521,21 +525,29 @@ int main(void)
     }
 
     /*set model path and pointers for load_models*/
+    generate_boundbox(&m_boundbox, 20);
     m_player.file_root     = malloc(strlen(basepath) + 32);
     m_projectile.file_root = malloc(strlen(basepath) + 32);
     m_asteroid.file_root   = malloc(strlen(basepath) + 32);
     m_blast.file_root      = malloc(strlen(basepath) + 32);
-    m_boundbox.file_root   = malloc(strlen(basepath) + 32);
     strcpy(m_player.file_root,     basepath);
     strcpy(m_projectile.file_root, basepath);
     strcpy(m_asteroid.file_root,   basepath);
     strcpy(m_blast.file_root,      basepath);
-    strcpy(m_boundbox.file_root,   basepath);
     strcat(m_player.file_root,     "data/model/player1");
     strcat(m_projectile.file_root, "data/model/projectile1");
     strcat(m_asteroid.file_root,   "data/model/asteroid1");
     strcat(m_blast.file_root,      "data/model/blast2");
-    strcat(m_boundbox.file_root,   "data/model/bounds1");
+    m_player.mode       = GL_TRIANGLES;
+    m_projectile.mode   = GL_TRIANGLES;
+    m_asteroid.mode     = GL_TRIANGLES;
+    m_blast.mode        = GL_TRIANGLES;
+    m_boundbox.mode     = GL_LINES;
+    m_player.format     = GL_N3F_V3F;
+    m_projectile.format = GL_N3F_V3F;
+    m_asteroid.format   = GL_N3F_V3F;
+    m_blast.format      = GL_N3F_V3F;
+    m_boundbox.format   = GL_V3F;
     m_ptr_all[0] = &m_player;
     m_ptr_all[1] = &m_projectile;
     m_ptr_all[2] = &m_asteroid;
@@ -604,7 +616,6 @@ int main(void)
     free(m_projectile.file_root);
     free(m_asteroid.file_root);
     free(m_blast.file_root);
-    free(m_boundbox.file_root);
     /*load images*/
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height,
                            &i_font.depth, 0);
@@ -1136,14 +1147,11 @@ int main(void)
         /*** begin scene ***/
         /*bounding box*/
         glPushMatrix();
-            glPushAttrib(GL_POLYGON_BIT|GL_ENABLE_BIT|
-                         GL_FOG_BIT|GL_CURRENT_BIT);
+            glPushAttrib(GL_ENABLE_BIT|GL_FOG_BIT|GL_CURRENT_BIT);
             glDisable(GL_LIGHTING);
             glFogf(GL_FOG_START, 200.f);
             glFogf(GL_FOG_END, 300.f);
             glColor3f(0.8f, 0.f, 0.f);
-            glPolygonMode(GL_FRONT, GL_LINE);
-            glScalef(ARENA_SIZE, ARENA_SIZE, ARENA_SIZE);
             draw_model(m_boundbox);
             glPopAttrib();
         glPopMatrix();
@@ -1777,11 +1785,17 @@ bool load_models(A3DModel **model, const int count)
     /*load models from file*/
     for(i = 0; i < count; i++)
     {
-        if(!load_model_from_file(model[i]->file_root, model[i]))
+        if(model[i]->file_root)
         {
-            fprintf(stderr, "Failed to load model from file\n");
-            return false;
+            if(!load_model_from_file(model[i]->file_root, model[i]))
+            {
+                fprintf(stderr, "Failed to load model from file\n");
+                return false;
+            }
         }
+        else
+            printf("Embedded model #%d - %d indices - %d vertices\n", i,
+                    model[i]->index_count, model[i]->vertex_count);
         /*get total number of elements*/
         all_vcount += model[i]->vertex_count;
         all_icount += model[i]->index_count;
@@ -1839,10 +1853,147 @@ bool load_models(A3DModel **model, const int count)
     return true;
 }
 
+void generate_boundbox(A3DModel *box, const int segments)
+{
+    /*distance between segments*/
+    const float d = 2.f * ARENA_SIZE / (float)segments;
+    const int vcount = 24 * segments;
+    int i, count = 0;
+
+    box->vertex_count = 3 * vcount;
+    box->index_count  = vcount;
+    box->vertex_data  = malloc(box->vertex_count * sizeof(float));
+    box->index_data   = malloc(box->index_count  * sizeof(unsigned));
+
+    /*forward side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+    }
+    /*right side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    /*back side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    /*left side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    /*top side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+    }
+    /*bottom side*/
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = (i/6)*d - ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE;
+    }
+    for(i = 0; i < segments*6; i += 6)
+    {
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+        box->vertex_data[count++] = ARENA_SIZE;
+        box->vertex_data[count++] = -ARENA_SIZE;
+        box->vertex_data[count++] = ARENA_SIZE - (i/6)*d;
+    }
+    /*indices*/
+    for(i = 0; i < box->index_count; i++)
+        box->index_data[i] = i;
+    printf("Bounding box:\n");
+    printf("      Target index count: %d\n", box->index_count);
+    printf("      Target vertex count: %d\n", box->vertex_count);
+    printf("      Final vertex count: %d\n", count);
+    printf("      Segments: %d\n", segments);
+    printf("      Segment distance: %.2f\n\n", d);
+}
+
 void draw_model(const A3DModel model)
 {
-    glInterleavedArrays(GL_N3F_V3F,0,(void*)(intptr_t)model.vertex_offset);
-    glDrawElements(GL_TRIANGLES, model.index_count, GL_UNSIGNED_INT,
+    glInterleavedArrays(model.format, 0, (void*)(intptr_t)model.vertex_offset);
+    glDrawElements(model.mode, model.index_count, GL_UNSIGNED_INT,
             (void*)(intptr_t)model.index_offset);
 }
 
