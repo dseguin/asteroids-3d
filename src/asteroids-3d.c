@@ -61,7 +61,7 @@
     #define M_PI    M_PIl
   #else
     #pragma message "No definition for PI. Using local def."
-    #define M_PI    3.14159265
+    #define M_PI    3.14159265f
   #endif
 #endif
 
@@ -400,15 +400,15 @@ void draw_model(const A3DModel model);
  *
  * Draws a textured skybox.
  *
- *     skybox  - Properties of the texture image
+ *     box     - Skybox model
  *     x, y, z - Center coordinates
  *
  * Draws 6 quads that are textured with the skybox image
  * forming a box around the player. The center should be the
  * negative of the player's current position.
  **/
-void draw_skybox(const A3DImage skybox, const A3DModel box,
-                 const float x, const float y, const float z);
+void draw_skybox(const A3DModel box, const float x,
+                 const float y, const float z);
 
 int main(void)
 {
@@ -691,6 +691,15 @@ int main(void)
         glBufferDataARB_ptr(GL_PIXEL_UNPACK_BUFFER, bytes, packed,
                             GL_STATIC_DRAW);
         free(packed);
+        /*texture object*/
+        glGenTextures(1, &pixbuffer);
+        glBindTexture(GL_TEXTURE_2D, pixbuffer);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexImage2D(GL_TEXTURE_2D, 0, i_skybox.depth, i_skybox.width,
+                i_skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
+                (void*)(intptr_t)i_skybox.offset);
         printf("Image data total: %d bytes\n\n", bytes);
     }
     else
@@ -870,7 +879,7 @@ int main(void)
         }
 
         /*get view frustum values*/
-        top_clip = tan(fov * camera.fovmod * radmod * 0.5f) * near_clip;
+        top_clip = (float)tan(fov * camera.fovmod * radmod * 0.5f) * near_clip;
         bottom_clip = -top_clip;
         left_clip = aspect_ratio * bottom_clip;
         right_clip = -left_clip;
@@ -1147,8 +1156,7 @@ int main(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
         if(a_player.is_spawned) draw_model(m_player);
         move_camera(&camera, timemod);
-        draw_skybox(i_skybox, m_skybox, -a_player.pos.x,
-                    -a_player.pos.y, -a_player.pos.z);
+        draw_skybox(m_skybox,-a_player.pos.x,-a_player.pos.y,-a_player.pos.z);
         /*blast*/
         if(!a_player.is_spawned)
         {
@@ -1354,19 +1362,19 @@ void rotate_static_actor(A3DActor *obj, float *m, float dt)
           *w = &(obj->quat_orientation.w);
 
     /*euler -> quat*/
-    s1 = sin(obj->euler_rot.yaw   * 0.5f * dt);
-    s2 = sin(obj->euler_rot.roll  * 0.5f * dt);
-    s3 = sin(obj->euler_rot.pitch * 0.5f * dt);
-    c1 = cos(obj->euler_rot.yaw   * 0.5f * dt);
-    c2 = cos(obj->euler_rot.roll  * 0.5f * dt);
-    c3 = cos(obj->euler_rot.pitch * 0.5f * dt);
+    s1 = (float)sin(obj->euler_rot.yaw   * 0.5f * dt);
+    s2 = (float)sin(obj->euler_rot.roll  * 0.5f * dt);
+    s3 = (float)sin(obj->euler_rot.pitch * 0.5f * dt);
+    c1 = (float)cos(obj->euler_rot.yaw   * 0.5f * dt);
+    c2 = (float)cos(obj->euler_rot.roll  * 0.5f * dt);
+    c3 = (float)cos(obj->euler_rot.pitch * 0.5f * dt);
     w2 = c1*c2*c3 - s1*s2*s3;
     x2 = s1*s2*c3 + c1*c2*s3;
     y2 = s1*c2*c3 + c1*s2*s3;
     z2 = c1*s2*c3 - s1*c2*s3;
     /*normalize*/
     tmp = x2*x2 + y2*y2 + z2*z2 + w2*w2;
-    if(fabs(tmp - 1.f) > SQRT_TOLERANCE)
+    if((float)fabs(tmp - 1.f) > SQRT_TOLERANCE)
     {
         if(tmp > SQRT_TOLERANCE)
         {
@@ -1470,12 +1478,12 @@ void move_camera(A3DCamera *cam, float dt)
           *z = &(cam->player->pos.z);
 
     /*camera movement panning/zooming*/
-    if(fabs(cam->player->euler_rot.yaw) < 0.000001f)
+    if((float)fabs(cam->player->euler_rot.yaw) < 0.000001f)
     {
         if(yacc < 1000.f) yacc += dt;
     }
     else yacc = 0.f;
-    if(fabs(cam->player->euler_rot.pitch) < 0.000001f)
+    if((float)fabs(cam->player->euler_rot.pitch) < 0.000001f)
     {
         if(pacc < 1000.f) pacc += dt;
     }
@@ -2025,13 +2033,13 @@ void generate_skybox(A3DModel *box, const float radius)
     /*texture coords*/
     for(i = 0; i < box->vertex_count; i += 20)
     {
-        box->vertex_data[i]    = 1.f;
-        box->vertex_data[i+1]  = 1.f;
+        box->vertex_data[i]    = 2.f;
+        box->vertex_data[i+1]  = 2.f;
         box->vertex_data[i+5]  = 0.f;
-        box->vertex_data[i+6]  = 1.f;
+        box->vertex_data[i+6]  = 2.f;
         box->vertex_data[i+10] = 0.f;
         box->vertex_data[i+11] = 0.f;
-        box->vertex_data[i+15] = 1.f;
+        box->vertex_data[i+15] = 2.f;
         box->vertex_data[i+16] = 0.f;
     }
     /*verts*/
@@ -2099,8 +2107,8 @@ void draw_model(const A3DModel model)
             (void*)(intptr_t)model.index_offset);
 }
 
-void draw_skybox(const A3DImage skybox, const A3DModel box,
-                 const float x, const float y, const float z)
+void draw_skybox(const A3DModel box, const float x,
+                 const float y, const float z)
 {
     glPushAttrib(GL_ENABLE_BIT|GL_DEPTH_BUFFER_BIT);
     glDisable(GL_LIGHTING);
@@ -2108,10 +2116,6 @@ void draw_skybox(const A3DImage skybox, const A3DModel box,
     glEnable(GL_TEXTURE_2D);
     glDepthMask(GL_FALSE);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, skybox.depth, skybox.width,
-            skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-            (void*)(intptr_t)skybox.offset);
     glPushMatrix();
         glTranslatef(x, y, z);
         draw_model(box);

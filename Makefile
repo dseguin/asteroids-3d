@@ -16,11 +16,11 @@ OBJECTS := $(BUILDDIR)/asteroids-3d.o
 DEBUGFLAGS := -Wall -Wextra -pedantic -Werror -Wfatal-errors -Wformat=2 \
 	-Wno-unused-function -Wswitch-enum -Wcast-align -Wpointer-arith \
 	-Wbad-function-cast -Wno-strict-aliasing -Wstrict-overflow=5 \
-	-Wstrict-prototypes -Winline -Wundef -Wnested-externs -Wcast-qual \
-	-Wshadow -Wunreachable-code -Wlogical-op -Wfloat-equal -Wredundant-decls \
-	-Wold-style-definition -ggdb3 -O0 -fno-omit-frame-pointer -ffloat-store \
-	-fno-common -fstrict-aliasing
-RELEASEFLAGS := -O2 -Wall -Wl,--strip-all
+	-Wfloat-conversion -Wstrict-prototypes -Winline -Wundef \
+	-Wnested-externs -Wcast-qual -Wshadow -Wunreachable-code -Wlogical-op \
+	-Wfloat-equal -Wredundant-decls -Wold-style-definition -ggdb3 -O0 \
+	-fno-omit-frame-pointer -ffloat-store -fno-common -fstrict-aliasing
+RELEASEFLAGS := -O3 -Wall -Wl,--strip-all
 LIB := -lm -lSDL2 -lGL
 INC := -Iinclude `sdl2-config --cflags`
 
