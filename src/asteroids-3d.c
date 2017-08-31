@@ -415,7 +415,8 @@ int main(void)
     /*vars*/
     bool          loop_exit      = false,
                   skip_dt        = false,
-                  fullscreen     = false;
+                  fullscreen     = false,
+                  red_tc         = true;
     char          win_title[256] = {'\0'},
                   t_fps[16]      = {'\0'},
                   t_mspf[16]     = {'\0'},
@@ -618,13 +619,24 @@ int main(void)
     /*fetch buffer object functions*/
     if(!SDL_GL_ExtensionSupported("GL_ARB_vertex_buffer_object"))
     {
-        fprintf(stderr, "GL_ARB_vertex_buffer_object not supported\n");
+        fprintf(stderr, "ARB_vertex_buffer_object not supported\n");
         return 1;
     }
     if(!SDL_GL_ExtensionSupported("GL_ARB_pixel_buffer_object"))
     {
-        fprintf(stderr, "GL_ARB_pixel_buffer_object not supported\n");
+        fprintf(stderr, "ARB_pixel_buffer_object not supported\n");
         return 1;
+    }
+    if(!SDL_GL_ExtensionSupported("GL_EXT_texture_compression_rgtc"))
+    {
+        fprintf(stderr, "EXT_texture_compression_rgtc not supported\n");
+        red_tc = false;
+    }
+    if(!SDL_GL_ExtensionSupported("GL_ARB_texture_swizzle") &&
+       !SDL_GL_ExtensionSupported("GL_EXT_texture_swizzle"))
+    {
+        fprintf(stderr, "(ARB/EXT)_texture_swizzle not supported\n");
+        red_tc = false;
     }
     *(void **)(&glDeleteBuffersARB_ptr) =
         SDL_GL_GetProcAddress("glDeleteBuffersARB");
@@ -684,7 +696,6 @@ int main(void)
         printf("Loaded image %s - %dx%dx%d texture\n",
                 i_skybox.filename, i_skybox.width,
                 i_skybox.height, i_skybox.depth);
-        free(i_skybox.filename);
         /*send packed data to device memory*/
         glGenBuffersARB_ptr(1, &pixbuffer);
         glBindBufferARB_ptr(GL_PIXEL_UNPACK_BUFFER, pixbuffer);
@@ -697,10 +708,25 @@ int main(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexImage2D(GL_TEXTURE_2D, 0, i_skybox.depth, i_skybox.width,
-                i_skybox.height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE,
-                (void*)(intptr_t)i_skybox.offset);
-        printf("Image data total: %d bytes\n\n", bytes);
+        if(red_tc)
+        {
+            int txc;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RED_RGTC1_EXT,
+                    i_skybox.width, i_skybox.height, 0, GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE, (void*)(intptr_t)i_skybox.offset);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
+            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0,
+                    GL_TEXTURE_COMPRESSED_IMAGE_SIZE, &txc);
+            printf("RGTC Red channel compression: %d bytes\n", txc);
+        }
+        else
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
+                    i_skybox.width, i_skybox.height, 0, GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE, (void*)(intptr_t)i_skybox.offset);
+        }
+        printf("Image uncompressed data total: %d bytes\n\n", bytes);
     }
     else
     {
@@ -709,6 +735,7 @@ int main(void)
         return 1;
     }
     free(i_font.filename);
+    free(i_skybox.filename);
     /*setup*/
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
