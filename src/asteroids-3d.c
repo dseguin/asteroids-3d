@@ -76,7 +76,11 @@
 #define true           '\x01'
 #define false          '\x00'
 
-#define BITFONT_OFFSET(x) (256*(7 - (x/16)) + (x%16))
+/*for a square of 8 lines of 16 characters*/
+#define BITFONT_WIDTH      0.0625f
+#define BITFONT_HEIGHT     0.125f
+#define BITFONT_XOFFSET(x) ((float)(x%16)*BITFONT_WIDTH)
+#define BITFONT_YOFFSET(x) ((float)(7 - (x/16))*BITFONT_HEIGHT)
 
 const float radmod = M_PI/180.f;
 const float target_time = 50.f/3.f;
@@ -198,6 +202,12 @@ typedef struct A3DScoreText {
         float y;
         float z;
     } pos;
+    struct {
+        float x;
+        float y;
+        float z;
+        float w;
+    } ori;
 } A3DScoreText;
 
 /*** Image object ***
@@ -262,6 +272,8 @@ void get_shot_vel(A3DActor *obj);
 void transform_static_actor(A3DActor *obj, float dt);
 void rotate_static_actor   (A3DActor *obj, float *m, float dt);
 void translate_static_actor(A3DActor *obj, float *m, float dt);
+
+void orient_text(const A3DScoreText t);
 
 /*** Move camera ***
  *
@@ -410,13 +422,16 @@ void draw_model(const A3DModel model);
 void draw_skybox(const A3DModel box, const float x,
                  const float y, const float z);
 
+void draw_text(const char *text, const float width);
+
 int main(void)
 {
     /*vars*/
     bool          loop_exit      = false,
                   skip_dt        = false,
                   fullscreen     = false,
-                  red_tc         = true;
+                  red_tc         = true,
+                  gen_mips       = true;
     char          win_title[256] = {'\0'},
                   t_fps[16]      = {'\0'},
                   t_mspf[16]     = {'\0'},
@@ -449,7 +464,8 @@ int main(void)
                   prevtime         = 0,
                   difftime         = 0,
                   score            = 0,
-                  topscore         = 0;
+                  topscore         = 0,
+                  texbuf[2];
     SDL_Event     ev_main;
     SDL_Window   *win_main;
     SDL_GLContext win_main_gl;
@@ -481,8 +497,10 @@ int main(void)
                  *m_ptr_all[6];
     A3DImage      i_font,
                   i_skybox;
-    A3DScoreText  scoretext[3] = {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
-    A3DScoreText  reticule[3]  = {{true,  {'\0'}, 0.f, {0.f, 0.f, 0.f}}};
+    A3DScoreText  scoretext[3] =
+            {{false, {'\0'}, 0.f, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}}};
+    A3DScoreText  reticule[3]  =
+            {{true,  {'\0'}, 0.f, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}}};
 
     /*initialize projectiles*/
     a_shot = malloc(sizeof(A3DActor)*MAX_SHOTS);
@@ -638,6 +656,11 @@ int main(void)
         fprintf(stderr, "(ARB/EXT)_texture_swizzle not supported\n");
         red_tc = false;
     }
+    if(!SDL_GL_ExtensionSupported("GL_SGIS_generate_mipmap"))
+    {
+        fprintf(stderr, "GL_SGIS_generate_mipmap not supported\n");
+        gen_mips = false;
+    }
     *(void **)(&glDeleteBuffersARB_ptr) =
         SDL_GL_GetProcAddress("glDeleteBuffersARB");
     *(void **)(&glGenBuffersARB_ptr) =
@@ -655,7 +678,7 @@ int main(void)
     free(m_blast.file_root);
     /*load images*/
     i_font.data = stbi_load(i_font.filename, &i_font.width, &i_font.height,
-                           &i_font.depth, 0);
+                           &i_font.depth, 1);
     i_skybox.data = stbi_load(i_skybox.filename, &i_skybox.width,
                                 &i_skybox.height, &i_skybox.depth, 1);
     if(i_font.data && i_font.depth == 1)
@@ -663,22 +686,14 @@ int main(void)
         unsigned char *packed;
         unsigned pixbuffer;
         int tbytes;
-        int bytes = (i_font.width * i_font.height)/8;
+        int bytes = (i_font.width * i_font.height);
         packed = malloc(bytes);
-        /*pack bitmapped font*/
-        for(i = 0; i < bytes; i++)
-        {
-            packed[i] = 0x00;
-            for(j = 0; j < 8; j++)
-            {
-                if(i_font.data[i*8+j] > 0) packed[i] |= 0x01;
-                if(j < 7) packed[i] = packed[i] << 1;
-            }
-        }
+        /*pack bitmap font*/
+        memcpy(packed, i_font.data, bytes);
         free(i_font.data);
         i_font.offset = 0;
-        printf("Loaded image %s - %dx%d bitmap\n",
-                i_font.filename, i_font.width, i_font.height);
+        printf("Loaded image %s - %dx%dx%d texture\n",
+                i_font.filename, i_font.width, i_font.height, i_font.depth);
         /*pack skybox textures*/
         tbytes = i_skybox.width * i_skybox.height;
         if(!i_skybox.data || i_skybox.depth != 1)
@@ -703,14 +718,41 @@ int main(void)
                             GL_STATIC_DRAW);
         free(packed);
         /*texture object*/
-        glGenTextures(1, &pixbuffer);
-        glBindTexture(GL_TEXTURE_2D, pixbuffer);
+        glGenTextures(2, texbuf);
+        glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+        if(gen_mips)
+        {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
+        }
+        else
+        {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindTexture(GL_TEXTURE_2D, texbuf[1]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        if(red_tc)
+        if(red_tc) /*red channel compression*/
         {
             int txc;
+            glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RED_RGTC1_EXT,
+                    i_font.width, i_font.height, 0, GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE, (void*)(intptr_t)i_font.offset);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_RED);
+            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0,
+                    GL_TEXTURE_COMPRESSED_IMAGE_SIZE, &txc);
+            printf("%s - RGTC Red channel compression: %d bytes\n",
+                    i_font.filename, txc);
+            glBindTexture(GL_TEXTURE_2D, texbuf[1]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RED_RGTC1_EXT,
                     i_skybox.width, i_skybox.height, 0, GL_LUMINANCE,
                     GL_UNSIGNED_BYTE, (void*)(intptr_t)i_skybox.offset);
@@ -718,10 +760,16 @@ int main(void)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
             glGetTexLevelParameteriv(GL_TEXTURE_2D, 0,
                     GL_TEXTURE_COMPRESSED_IMAGE_SIZE, &txc);
-            printf("RGTC Red channel compression: %d bytes\n", txc);
+            printf("%s - RGTC Red channel compression: %d bytes\n",
+                    i_skybox.filename, txc);
         }
-        else
+        else /*no compression*/
         {
+            glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_INTENSITY,
+                    i_font.width, i_font.height, 0, GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE, (void*)(intptr_t)i_font.offset);
+            glBindTexture(GL_TEXTURE_2D, texbuf[1]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
                     i_skybox.width, i_skybox.height, 0, GL_LUMINANCE,
                     GL_UNSIGNED_BYTE, (void*)(intptr_t)i_skybox.offset);
@@ -751,6 +799,7 @@ int main(void)
     glFogi(GL_FOG_MODE, GL_LINEAR);
     glFogf(GL_FOG_START, 500.f);
     glFogf(GL_FOG_END, 800.f);
+    glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
 
     prevtime = SDL_GetTicks();
 
@@ -970,6 +1019,10 @@ int main(void)
                 (2.f*(*y)*(*z) - 2.f*(*x)*(*w)) - a_player.vel.y;
             reticule[i].pos.z += reticule[i].offset *
                 (1.f - 2.f*(*x)*(*x) - 2.f*(*y)*(*y)) - a_player.vel.z;
+            reticule[i].ori.x = -*z;
+            reticule[i].ori.y = -*w;
+            reticule[i].ori.z = -*x;
+            reticule[i].ori.w = *y;
         }
         /*check asteroids*/
         for(i = 0; i < MAX_ASTEROIDS; i++)
@@ -1101,7 +1154,13 @@ int main(void)
             if(scoretext[i].offset > 1.f)
                scoretext[i].is_spawned = false;
             else
+            {
                scoretext[i].offset += 0.02f * timemod;
+               scoretext[i].ori.x = -a_player.quat_orientation.x;
+               scoretext[i].ori.y = -a_player.quat_orientation.y;
+               scoretext[i].ori.z = -a_player.quat_orientation.z;
+               scoretext[i].ori.w =  a_player.quat_orientation.w;
+            }
         }
         /*grow blast effect*/
         if(!a_player.is_spawned && a_blast.is_spawned)
@@ -1128,43 +1187,6 @@ int main(void)
         /*** drawing ***/
         glViewport(0, 0, width_real, height_real);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        /*bitmap text*/
-        if(debug_level)
-        {
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-            glOrtho(left_clip, right_clip, bottom_clip, top_clip, -1.f, 1.f);
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
-            glRasterPos3f(left_clip + 0.01f, bottom_clip + 0.02f, 0.f);
-            for(i = 0; i < (signed)strlen(t_relvel); i++)   /*relative vel*/
-                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                        (void*)(intptr_t)(BITFONT_OFFSET(t_relvel[i])));
-            glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_relvel), 33.f,
-                    (void*)(intptr_t)(BITFONT_OFFSET(' ')));
-            for(i = 0; i < (signed)strlen(t_topscore); i++) /*top score*/
-                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                        (void*)(intptr_t)(BITFONT_OFFSET(t_topscore[i])));
-            glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_topscore), 17.f,
-                    (void*)(intptr_t)(BITFONT_OFFSET(' ')));
-            for(i = 0; i < (signed)strlen(t_score); i++)    /*score*/
-                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                        (void*)(intptr_t)(BITFONT_OFFSET(t_score[i])));
-            if(debug_level > 1)
-            {
-                glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_score), 33.f,
-                        (void*)(intptr_t)(BITFONT_OFFSET(' ')));
-                for(i = 0; i < (signed)strlen(t_mspf); i++) /*ms/F*/
-                    glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                            (void*)(intptr_t)(BITFONT_OFFSET(t_mspf[i])));
-                glBitmap(8, 16, 0.f, 0.f, -8.f*(signed)strlen(t_mspf), 17.f,
-                        (void*)(intptr_t)(BITFONT_OFFSET(' ')));
-                for(i = 0; i < (signed)strlen(t_fps); i++)  /*FPS*/
-                    glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                            (void*)(intptr_t)(BITFONT_OFFSET(t_fps[i])));
-            }
-        }
         /*projection*/
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -1183,6 +1205,7 @@ int main(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, tmp_diffuse_color);
         if(a_player.is_spawned) draw_model(m_player);
         move_camera(&camera, timemod);
+        glBindTexture(GL_TEXTURE_2D, texbuf[1]);
         draw_skybox(m_skybox,-a_player.pos.x,-a_player.pos.y,-a_player.pos.z);
         /*blast*/
         if(!a_player.is_spawned)
@@ -1273,29 +1296,69 @@ int main(void)
         {
             if(!scoretext[i].is_spawned)
                 continue;
-            glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);
-            glDisable(GL_LIGHTING);
+            glPushAttrib(GL_CURRENT_BIT);
             glColor3f(0.5f - 0.5f*(scoretext[i].offset),
                       1.f - scoretext[i].offset, 0.f);
-            glRasterPos3f(scoretext[i].pos.x, scoretext[i].pos.y,
-                          scoretext[i].pos.z);
-            for(j = 0; j < (signed)strlen(scoretext[i].text); j++)
-                glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                    (void*)(intptr_t)(BITFONT_OFFSET(scoretext[i].text[j])));
+            glPushMatrix();
+                orient_text(scoretext[i]);
+                glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+                draw_text(scoretext[i].text, 10.f);
+            glPopMatrix();
             glPopAttrib();
         }
         /*targeting reticules*/
         for(i = 0; i < 3; i++)
         {
+            if(!a_player.is_spawned)
+                break;
             glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT);
-            glDisable(GL_LIGHTING);
             glDisable(GL_DEPTH_TEST);
             glColor3f(1.f, 1.f, 1.f);
-            glRasterPos3f(reticule[i].pos.x, reticule[i].pos.y,
-                          reticule[i].pos.z);
-            glBitmap(8, 16, 0.f, 0.f, 8.f, 0.f,
-                    (void*)(intptr_t)(BITFONT_OFFSET(reticule[i].text[0])));
+            glPushMatrix();
+                orient_text(reticule[i]);
+                glScalef(0.02f*reticule[i].offset, 0.02f*reticule[i].offset,
+                         0.02f*reticule[i].offset);
+                glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+                draw_text(reticule[i].text, -1.f);
+            glPopMatrix();
             glPopAttrib();
+        }
+        /*bitmap text*/
+        if(debug_level)
+        {
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(-aspect_ratio, aspect_ratio, -1.f, 1.f, -1.f, 1.f);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glBindTexture(GL_TEXTURE_2D, texbuf[0]);
+            glPushMatrix(); /*relative vel*/
+                glTranslatef(-aspect_ratio*0.25f, -0.94f, 0.f);
+                draw_text(t_relvel, aspect_ratio*0.5f);
+            glPopMatrix();
+            glPushMatrix(); /*score*/
+                glTranslatef(-aspect_ratio + 0.01f, 0.98f, 0.f);
+                glScalef(0.02f, 0.02f, 0.f);
+                draw_text(t_score, -1.f);
+            glPopMatrix();
+            glPushMatrix(); /*topscore*/
+                glTranslatef(-aspect_ratio + 0.01f, 0.94f, 0.f);
+                glScalef(0.02f, 0.02f, 0.f);
+                draw_text(t_topscore, -1.f);
+            glPopMatrix();
+            if(debug_level > 1)
+            {
+                glPushMatrix(); /*FPS*/
+                    glTranslatef(aspect_ratio*0.8f, 0.98f, 0.f);
+                    glScalef(0.02f, 0.02f, 0.f);
+                    draw_text(t_fps, -1.f);
+                glPopMatrix();
+                glPushMatrix(); /*ms/F*/
+                    glTranslatef(aspect_ratio*0.8f, 0.94f, 0.f);
+                    glScalef(0.02f, 0.02f, 0.f);
+                    draw_text(t_mspf, -1.f);
+                glPopMatrix();
+            }
         }
         /*** end scene ***/
         SDL_GL_SwapWindow(win_main);
@@ -1377,6 +1440,45 @@ void get_shot_vel(A3DActor *obj)
     obj->vel.x = obj->vel.z * (2.f*(*x)*(*z) - 2.f*(*y)*(*w));
     obj->vel.y = obj->vel.z * (2.f*(*y)*(*z) + 2.f*(*x)*(*w));
     obj->vel.z = obj->vel.z * (1.f - 2.f*(*x)*(*x) - 2.f*(*y)*(*y));
+}
+
+void orient_text(const A3DScoreText t)
+{
+    float m[16];
+
+    /*quat -> transposed rotation matrix
+     *
+     * | x(x) y(x) z(x) tx |
+     * | x(y) y(y) z(y) ty |
+     * | x(z) y(z) z(z) tz |
+     * |  0    0    0    1 |
+     *
+     * where x() is the x axis direction,
+     * y() is the y axis direction, and
+     * z() is the z axis direction. Each
+     * axis has a (x,y,z) component.
+     */
+    m[0] = 1.f - 2.f*(t.ori.y)*(t.ori.y) - 2.f*(t.ori.z)*(t.ori.z);
+    m[1] = 2.f*(t.ori.x)*(t.ori.y) - 2.f*(t.ori.z)*(t.ori.w);
+    m[2] = 2.f*(t.ori.x)*(t.ori.z) + 2.f*(t.ori.y)*(t.ori.w);
+    m[3] = 0.f;
+
+    m[4] = 2.f*(t.ori.x)*(t.ori.y) + 2.f*(t.ori.z)*(t.ori.w);
+    m[5] = 1.f - 2.f*(t.ori.x)*(t.ori.x) - 2.f*(t.ori.z)*(t.ori.z);
+    m[6] = 2.f*(t.ori.y)*(t.ori.z) - 2.f*(t.ori.x)*(t.ori.w);
+    m[7] = 0.f;
+
+    m[8] = 2.f*(t.ori.x)*(t.ori.z) - 2.f*(t.ori.y)*(t.ori.w);
+    m[9] = 2.f*(t.ori.y)*(t.ori.z) + 2.f*(t.ori.x)*(t.ori.w);
+    m[10] = 1.f - 2.f*(t.ori.x)*(t.ori.x) - 2.f*(t.ori.y)*(t.ori.y);
+    m[11] = 0.f;
+
+    m[12] = t.pos.x;
+    m[13] = t.pos.y;
+    m[14] = t.pos.z;
+    m[15] = 1.f;
+
+    glMultMatrixf(m);
 }
 
 void rotate_static_actor(A3DActor *obj, float *m, float dt)
@@ -2142,11 +2244,41 @@ void draw_skybox(const A3DModel box, const float x,
     glDisable(GL_FOG);
     glEnable(GL_TEXTURE_2D);
     glDepthMask(GL_FALSE);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPushMatrix();
         glTranslatef(x, y, z);
         draw_model(box);
     glPopMatrix();
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 128);
+    glPopAttrib();
+}
+
+void draw_text(const char *text, const float width)
+{
+    unsigned len, i;
+    float xo, yo, cw;
+    if(!text) return;
+    len = strlen(text);
+    if(width > 0.f) cw = width/(float)len;
+    else            cw = 1.f;
+
+    glPushAttrib(GL_ENABLE_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_FOG);
+    glEnable(GL_BLEND);
+    glEnable(GL_TEXTURE_2D);
+    glBegin(GL_QUADS);
+    for(i = 0; i < len; i++)
+    {
+        xo = BITFONT_XOFFSET(text[i]);
+        yo = BITFONT_YOFFSET(text[i]);
+        glTexCoord2f(xo + BITFONT_WIDTH, yo + BITFONT_HEIGHT);
+        glVertex2f(cw*i + cw*0.5f, cw);
+        glTexCoord2f(xo, yo + BITFONT_HEIGHT);
+        glVertex2f(cw*i - cw*0.5f, cw);
+        glTexCoord2f(xo, yo);
+        glVertex2f(cw*i - cw*0.5f, -cw);
+        glTexCoord2f(xo + BITFONT_WIDTH, yo);
+        glVertex2f(cw*i + cw*0.5f, -cw);
+    }
+    glEnd();
     glPopAttrib();
 }
