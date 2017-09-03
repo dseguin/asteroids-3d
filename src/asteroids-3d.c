@@ -273,6 +273,15 @@ void transform_static_actor(A3DActor *obj, float dt);
 void rotate_static_actor   (A3DActor *obj, float *m, float dt);
 void translate_static_actor(A3DActor *obj, float *m, float dt);
 
+/*** Set text orientation ***
+ *
+ * Apply rotation and translation to text object.
+ *
+ *     t - static text object.
+ *
+ * Solely applies the text's orientation and position to the
+ * current matrix.
+ **/
 void orient_text(const A3DScoreText t);
 
 /*** Move camera ***
@@ -422,7 +431,21 @@ void draw_model(const A3DModel model);
 void draw_skybox(const A3DModel box, const float x,
                  const float y, const float z);
 
-void draw_text(const char *text, const float width);
+/*** Draw text ***
+ *
+ * Draws text as textured quads.
+ *
+ *     text      - Text string to render
+ *     width     - Width of text
+ *     charwidth - Whether 'width' applies to individual
+ *                 characters or the whole text
+ *
+ * Draws a string of text as a series of textured quads
+ * 'width' wide. 'charwidth' determines whether 'width'
+ * is the character width (true), or the width of the whole
+ * rendered text (false).
+ **/
+void draw_text(const char *text, const float width, const bool charwidth);
 
 int main(void)
 {
@@ -722,7 +745,7 @@ int main(void)
         glBindTexture(GL_TEXTURE_2D, texbuf[0]);
         if(gen_mips)
         {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
         }
@@ -1302,7 +1325,7 @@ int main(void)
             glPushMatrix();
                 orient_text(scoretext[i]);
                 glBindTexture(GL_TEXTURE_2D, texbuf[0]);
-                draw_text(scoretext[i].text, 10.f);
+                draw_text(scoretext[i].text, 10.f, false);
             glPopMatrix();
             glPopAttrib();
         }
@@ -1316,10 +1339,8 @@ int main(void)
             glColor3f(1.f, 1.f, 1.f);
             glPushMatrix();
                 orient_text(reticule[i]);
-                glScalef(0.02f*reticule[i].offset, 0.02f*reticule[i].offset,
-                         0.02f*reticule[i].offset);
                 glBindTexture(GL_TEXTURE_2D, texbuf[0]);
-                draw_text(reticule[i].text, -1.f);
+                draw_text(reticule[i].text, 0.02f*reticule[i].offset, true);
             glPopMatrix();
             glPopAttrib();
         }
@@ -1333,30 +1354,26 @@ int main(void)
             glLoadIdentity();
             glBindTexture(GL_TEXTURE_2D, texbuf[0]);
             glPushMatrix(); /*relative vel*/
-                glTranslatef(-aspect_ratio*0.25f, -0.94f, 0.f);
-                draw_text(t_relvel, aspect_ratio*0.5f);
+                glTranslatef(-aspect_ratio*0.5f, -0.94f, 0.f);
+                draw_text(t_relvel, aspect_ratio, false);
             glPopMatrix();
             glPushMatrix(); /*score*/
                 glTranslatef(-aspect_ratio + 0.01f, 0.98f, 0.f);
-                glScalef(0.02f, 0.02f, 0.f);
-                draw_text(t_score, -1.f);
+                draw_text(t_score, 0.02f, true);
             glPopMatrix();
             glPushMatrix(); /*topscore*/
                 glTranslatef(-aspect_ratio + 0.01f, 0.94f, 0.f);
-                glScalef(0.02f, 0.02f, 0.f);
-                draw_text(t_topscore, -1.f);
+                draw_text(t_topscore, 0.02f, true);
             glPopMatrix();
             if(debug_level > 1)
             {
                 glPushMatrix(); /*FPS*/
                     glTranslatef(aspect_ratio*0.8f, 0.98f, 0.f);
-                    glScalef(0.02f, 0.02f, 0.f);
-                    draw_text(t_fps, -1.f);
+                    draw_text(t_fps, 0.02f, true);
                 glPopMatrix();
                 glPushMatrix(); /*ms/F*/
                     glTranslatef(aspect_ratio*0.8f, 0.94f, 0.f);
-                    glScalef(0.02f, 0.02f, 0.f);
-                    draw_text(t_mspf, -1.f);
+                    draw_text(t_mspf, 0.02f, true);
                 glPopMatrix();
             }
         }
@@ -2251,14 +2268,14 @@ void draw_skybox(const A3DModel box, const float x,
     glPopAttrib();
 }
 
-void draw_text(const char *text, const float width)
+void draw_text(const char *text, const float width, const bool charwidth)
 {
     unsigned len, i;
     float xo, yo, cw;
     if(!text) return;
     len = strlen(text);
-    if(width > 0.f) cw = width/(float)len;
-    else            cw = 1.f;
+    if(charwidth) cw = width;
+    else          cw = width/(float)len;
 
     glPushAttrib(GL_ENABLE_BIT);
     glDisable(GL_LIGHTING);
@@ -2282,3 +2299,4 @@ void draw_text(const char *text, const float width)
     glEnd();
     glPopAttrib();
 }
+
