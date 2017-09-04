@@ -1,3 +1,13 @@
+2017-09-03 - Version 1.0.2 ***
+
+* Render text as textured quads instead of bitmap rasters
+* Added texture compression
+* Improved texture rendering
+
+2017-08-28 - Version 1.0.1 ***
+
+* Fixed crash when loading models
+
 2017-08-28 - Version 1.0.0 ***
 
 * Initial release
