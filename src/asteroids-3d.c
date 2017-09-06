@@ -629,6 +629,18 @@ int main(void)
     strcpy(i_skybox.filename, basepath);
     strcat(i_skybox.filename, "data/image/skybox0d.png");
 
+    #ifdef _WIN32
+    /*write output to file on Windows*/
+    char *winfilepath = malloc(strlen(basepath) + 32);
+    strcpy(winfilepath, basepath);
+    strcat(winfilepath, "stdout.txt");
+    freopen(winfilepath, "w", stdout);
+    strcpy(winfilepath, basepath);
+    strcat(winfilepath, "stderr.txt");
+    freopen(winfilepath, "w", stderr);
+    free(winfilepath);
+    #endif
+
     /*free base path*/
     free(basepath);
 
@@ -824,6 +836,7 @@ int main(void)
     glFogf(GL_FOG_START, 500.f);
     glFogf(GL_FOG_END, 800.f);
     glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
+    glShadeModel(GL_FLAT);
 
     prevtime = SDL_GetTicks();
 
@@ -1400,6 +1413,8 @@ int main(void)
     }
 
     /*cleanup*/
+    if(glGetError() != GL_NO_ERROR)
+        fprintf(stderr, "GL encountered an error durring execution\n");
     SDL_GL_DeleteContext(win_main_gl);
     SDL_DestroyWindow(win_main);
     SDL_Quit();
