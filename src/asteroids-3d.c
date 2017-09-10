@@ -99,10 +99,30 @@ typedef void (APIENTRY *glBufferDataARB_Func)(GLenum        target,
                                               GLsizeiptr    size,
                                               const GLvoid *data,
                                               GLenum        usage);
-glDeleteBuffersARB_Func glDeleteBuffersARB_ptr = 0;
-glGenBuffersARB_Func glGenBuffersARB_ptr = 0;
-glBindBufferARB_Func glBindBufferARB_ptr = 0;
-glBufferDataARB_Func glBufferDataARB_ptr = 0;
+typedef void (APIENTRY *glGetQueryivARB_Func)(GLenum        target,
+                                              GLenum        pname,
+                                              GLint        *params);
+typedef void (APIENTRY *glGenQueriesARB_Func)(GLsizei       n,
+                                              GLuint       *ids);
+typedef void (APIENTRY *glDeleteQueriesARB_Func)(GLsizei    n,
+                                              const GLuint *ids);
+typedef void (APIENTRY *glBeginQueryARB_Func)(GLenum        target,
+                                              GLuint        id);
+typedef void (APIENTRY *glEndQueryARB_Func)(GLenum          target);
+typedef void (APIENTRY *glGetQueryObjectivARB_Func)(GLuint  id,
+                                              GLenum        pname,
+                                              GLint        *params);
+
+glDeleteBuffersARB_Func    glDeleteBuffersARB_ptr    = 0;
+glGenBuffersARB_Func       glGenBuffersARB_ptr       = 0;
+glBindBufferARB_Func       glBindBufferARB_ptr       = 0;
+glBufferDataARB_Func       glBufferDataARB_ptr       = 0;
+glGetQueryivARB_Func       glGetQueryivARB_ptr       = 0;
+glGenQueriesARB_Func       glGenQueriesARB_ptr       = 0;
+glDeleteQueriesARB_Func    glDeleteQueriesARB_ptr    = 0;
+glBeginQueryARB_Func       glBeginQueryARB_ptr       = 0;
+glEndQueryARB_Func         glEndQueryARB_ptr         = 0;
+glGetQueryObjectivARB_Func glGetQueryObjectivARB_ptr = 0;
 
 /*** Model object ***
  *
@@ -112,6 +132,7 @@ glBufferDataARB_Func glBufferDataARB_ptr = 0;
  * conventions for glInterleavedArrays().
  **/
 typedef struct A3DModel {
+    bool      const_data;  /*false if data is malloc'd*/
     char     *file_root;
     unsigned *index_data;  /*don't expect to */
     float    *vertex_data; /*access these directly*/
@@ -454,7 +475,10 @@ int main(void)
                   skip_dt        = false,
                   fullscreen     = false,
                   red_tc         = true,
-                  gen_mips       = true;
+                  gen_mips       = true,
+                  occ_query      = true,
+                  occ_query2     = true,
+                  started_query  = false;
     char          win_title[256] = {'\0'},
                   t_fps[16]      = {'\0'},
                   t_mspf[16]     = {'\0'},
@@ -476,6 +500,22 @@ int main(void)
                   timemod        = 1.f,
                   blastmod       = 32.f;
     float         tmp_diffuse_color[] = {0.f, 0.8f, 0.f, 1.f};
+    float         unit_box_vert[] = {
+                   1.f,  1.f,  1.f,
+                   1.f,  1.f, -1.f,
+                  -1.f,  1.f, -1.f,
+                  -1.f,  1.f,  1.f,
+                   1.f, -1.f,  1.f,
+                   1.f, -1.f, -1.f,
+                  -1.f, -1.f, -1.f,
+                  -1.f, -1.f,  1.f};
+    unsigned      unit_box_in[] = {
+                  0, 1, 2, 3,
+                  0, 3, 7, 4,
+                  1, 0, 4, 5,
+                  2, 1, 5, 6,
+                  3, 2, 6, 7,
+                  7, 6, 5, 4};
     int           i,j,k,
                   width_real,
                   height_real,
@@ -488,7 +528,8 @@ int main(void)
                   difftime         = 0,
                   score            = 0,
                   topscore         = 0,
-                  texbuf[2];
+                  texbuf[2],
+                  aster_queries[MAX_ASTEROIDS];
     SDL_Event     ev_main;
     SDL_Window   *win_main;
     SDL_GLContext win_main_gl;
@@ -517,7 +558,8 @@ int main(void)
                   m_blast,
                   m_boundbox,
                   m_skybox,
-                 *m_ptr_all[6];
+                  m_unitbox,
+                 *m_ptr_all[7];
     A3DImage      i_font,
                   i_skybox;
     A3DScoreText  scoretext[3] =
@@ -586,8 +628,15 @@ int main(void)
     }
 
     /*set model path and pointers for load_models*/
+    /*buit-in data*/
     generate_boundbox(&m_boundbox, 20);
     generate_skybox(&m_skybox, 100.f);
+    m_unitbox.vertex_data  = unit_box_vert;
+    m_unitbox.vertex_count = sizeof(unit_box_vert)/sizeof(*unit_box_vert);
+    m_unitbox.index_data   = unit_box_in;
+    m_unitbox.index_count  = sizeof(unit_box_in)/sizeof(*unit_box_in);
+    /*file paths*/
+    m_unitbox.file_root    = "none";
     m_boundbox.file_root   = "none";
     m_skybox.file_root     = "none";
     m_player.file_root     = malloc(strlen(basepath) + 32);
@@ -602,24 +651,38 @@ int main(void)
     strcat(m_projectile.file_root, "data/model/projectile1");
     strcat(m_asteroid.file_root,   "data/model/asteroid1");
     strcat(m_blast.file_root,      "data/model/blast2");
+    /*if data is static*/
+    m_player.const_data     = false;
+    m_projectile.const_data = false;
+    m_asteroid.const_data   = false;
+    m_blast.const_data      = false;
+    m_boundbox.const_data   = false;
+    m_skybox.const_data     = false;
+    m_unitbox.const_data    = true;
+    /*drawing mode*/
     m_player.mode       = GL_TRIANGLES;
     m_projectile.mode   = GL_TRIANGLES;
     m_asteroid.mode     = GL_TRIANGLES;
     m_blast.mode        = GL_TRIANGLES;
     m_boundbox.mode     = GL_LINES;
     m_skybox.mode       = GL_QUADS;
+    m_unitbox.mode      = GL_QUADS;
+    /*interleaved format*/
     m_player.format     = GL_N3F_V3F;
     m_projectile.format = GL_N3F_V3F;
     m_asteroid.format   = GL_N3F_V3F;
     m_blast.format      = GL_N3F_V3F;
     m_boundbox.format   = GL_V3F;
     m_skybox.format     = GL_T2F_V3F;
+    m_unitbox.format    = GL_V3F;
+    /*pointers to models*/
     m_ptr_all[0] = &m_player;
     m_ptr_all[1] = &m_projectile;
     m_ptr_all[2] = &m_asteroid;
     m_ptr_all[3] = &m_blast;
     m_ptr_all[4] = &m_boundbox;
     m_ptr_all[5] = &m_skybox;
+    m_ptr_all[6] = &m_unitbox;
 
     /*set image path*/
     i_font.filename = malloc(strlen(basepath) + 32);
@@ -669,7 +732,7 @@ int main(void)
     if(SDL_SetRelativeMouseMode(SDL_TRUE))
         fprintf(stderr,
                 "SDL_SetRelativeMouseMode failed. Mouse capture disabled.\n");
-    /*fetch buffer object functions*/
+    /*check GL extension availability*/
     if(!SDL_GL_ExtensionSupported("GL_ARB_vertex_buffer_object"))
     {
         fprintf(stderr, "ARB_vertex_buffer_object not supported\n");
@@ -696,6 +759,17 @@ int main(void)
         fprintf(stderr, "GL_SGIS_generate_mipmap not supported\n");
         gen_mips = false;
     }
+    if(!SDL_GL_ExtensionSupported("GL_ARB_occlusion_query"))
+    {
+        fprintf(stderr, "GL_ARB_occlusion_query not supported\n");
+        occ_query = false;
+    }
+    if(!SDL_GL_ExtensionSupported("GL_ARB_occlusion_query2"))
+    {
+        fprintf(stderr, "GL_ARB_occlusion_query2 not supported\n");
+        occ_query2 = false;
+    }
+    /*fetch buffer object functions*/
     *(void **)(&glDeleteBuffersARB_ptr) =
         SDL_GL_GetProcAddress("glDeleteBuffersARB");
     *(void **)(&glGenBuffersARB_ptr) =
@@ -704,8 +778,30 @@ int main(void)
         SDL_GL_GetProcAddress("glBindBufferARB");
     *(void **)(&glBufferDataARB_ptr) =
         SDL_GL_GetProcAddress("glBufferDataARB");
+    if(occ_query)
+    {
+        int qb = 0;
+        *(void **)(&glGetQueryivARB_ptr) =
+            SDL_GL_GetProcAddress("glGetQueryivARB");
+        *(void **)(&glGenQueriesARB_ptr) =
+            SDL_GL_GetProcAddress("glGenQueriesARB");
+        *(void **)(&glDeleteQueriesARB_ptr) =
+            SDL_GL_GetProcAddress("glDeleteQueriesARB");
+        *(void **)(&glBeginQueryARB_ptr) =
+            SDL_GL_GetProcAddress("glBeginQueryARB");
+        *(void **)(&glEndQueryARB_ptr) =
+            SDL_GL_GetProcAddress("glEndQueryARB");
+        *(void **)(&glGetQueryObjectivARB_ptr) =
+            SDL_GL_GetProcAddress("glGetQueryObjectivARB");
+        glGetQueryivARB_ptr(GL_SAMPLES_PASSED, GL_QUERY_COUNTER_BITS, &qb);
+        if(!qb)
+        {
+            fprintf(stderr, "No occlusion query bits\n");
+            occ_query = false;
+        }
+    }
     /*load models*/
-    if(!load_models(m_ptr_all, 6))
+    if(!load_models(m_ptr_all, 7))
         return 1;
     free(m_player.file_root);
     free(m_projectile.file_root);
@@ -1276,6 +1372,10 @@ int main(void)
             glPopAttrib();
         glPopMatrix();
         /*projectiles*/
+        glPushAttrib(GL_LIGHTING_BIT);
+        tmp_diffuse_color[0] = 0.f;
+        tmp_diffuse_color[1] = 1.f;
+        tmp_diffuse_color[2] = 1.f;
         for(i = 0; i < MAX_SHOTS; i++)
         {
             float dx,dy,dz;
@@ -1287,22 +1387,25 @@ int main(void)
             /*despawn shot if distance from player > 320*/
             if(inv_sqrt_dwh(dx*dx + dy*dy + dz*dz) < 0.003125f)
                 a_shot[i].is_spawned = false;
+            glMaterialfv(GL_FRONT, GL_EMISSION, tmp_diffuse_color);
             glPushMatrix();
-                glPushAttrib(GL_LIGHTING_BIT);
-                tmp_diffuse_color[0] = 0.f;
-                tmp_diffuse_color[1] = 1.f;
-                tmp_diffuse_color[2] = 1.f;
-                glMaterialfv(GL_FRONT, GL_EMISSION, tmp_diffuse_color);
                 transform_static_actor(&(a_shot[i]), timemod);
                 draw_model(m_projectile);
-                glPopAttrib();
             glPopMatrix();
         }
+        glPopAttrib();
         /*asteroids*/
         for(i = 0; i < MAX_ASTEROIDS; i++)
         {
+            int qresult = 0;
             if(!a_aster[i].is_spawned)
                 continue;
+            if(occ_query && started_query)
+            {
+                glGetQueryObjectivARB_ptr(aster_queries[i],
+                        GL_QUERY_RESULT, &qresult);
+                if(!qresult) continue;
+            }
             if(a_aster[i].mass > (ASTER_LARGE + ASTER_MED)*0.5f)
             {   /*more red*/
                 tmp_diffuse_color[0] = 0.8f;
@@ -1327,6 +1430,36 @@ int main(void)
                 glScalef(a_aster[i].mass, a_aster[i].mass, a_aster[i].mass);
                 draw_model(m_asteroid);
             glPopMatrix();
+        }
+        /*asteroid occlusion queries*/
+        if(occ_query)
+        {
+            int sf;
+            glDeleteQueriesARB_ptr(MAX_ASTEROIDS, aster_queries);
+            glGenQueriesARB_ptr(MAX_ASTEROIDS, aster_queries);
+            if(occ_query2) sf = GL_ANY_SAMPLES_PASSED;
+            else           sf = GL_SAMPLES_PASSED_ARB;
+            glPushAttrib(GL_ENABLE_BIT|GL_DEPTH_BUFFER_BIT|
+                         GL_COLOR_BUFFER_BIT);
+            glDisable(GL_LIGHTING);
+            glDepthMask(GL_FALSE);
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            for(i = 0; i < MAX_ASTEROIDS; i++)
+            {
+                glPushMatrix();
+                    glBeginQueryARB_ptr(sf, aster_queries[i]);
+                    if(a_aster[i].is_spawned)
+                    {
+                        transform_static_actor(&(a_aster[i]), timemod);
+                        glScalef(a_aster[i].mass*1.2f, a_aster[i].mass*1.2f,
+                                a_aster[i].mass*1.2f);
+                        draw_model(m_unitbox);
+                    }
+                    glEndQueryARB_ptr(sf);
+                glPopMatrix();
+            }
+            glPopAttrib();
+            started_query = true;
         }
         /*scoretext objects*/
         for(i = 0; i < 3; i++)
@@ -2023,8 +2156,11 @@ bool load_models(A3DModel **model, const int count)
         tmp_vcount += model[i]->vertex_count;
         tmp_icount += model[i]->index_count;
         /*free model data*/
-        free(model[i]->vertex_data);
-        free(model[i]->index_data);
+        if(!model[i]->const_data)
+        {
+            free(model[i]->vertex_data);
+            free(model[i]->index_data);
+        }
     }
 
     /*copy index/vertex data to device memory*/
