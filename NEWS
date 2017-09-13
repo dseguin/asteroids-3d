@@ -1,3 +1,9 @@
+2017-09-12 - Version 1.0.3 ***
+
+* Performance improvements
+* Models occupy less memory
+* Output is logged to stderr.txt and stdout.txt on Windows
+
 2017-09-03 - Version 1.0.2 ***
 
 * Render text as textured quads instead of bitmap rasters
