@@ -704,9 +704,6 @@ int main(void)
     free(winfilepath);
     #endif
 
-    /*free base path*/
-    free(basepath);
-
     /*init*/
     SDL_Init(SDL_INIT_VIDEO);
     win_main = SDL_CreateWindow("Asteroids 3D", SDL_WINDOWPOS_UNDEFINED,
